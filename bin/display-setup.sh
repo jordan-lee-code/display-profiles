@@ -1,11 +1,18 @@
 #!/bin/bash
-# Discover connected outputs, available modes, and saved profiles
+# Show connected outputs with available resolutions and refresh rates,
+# and list any saved profiles. Useful for finding the exact output names
+# (DP-0, HDMI-1, etc.) needed when creating a new profile.
 
 source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../lib/common.sh"
 
 echo "Connected outputs:"
 echo ""
 
+# Parse xrandr output into a readable summary. The awk script tracks which
+# output it's currently inside (in_output) and resets on any line starting
+# with an uppercase letter, which is how xrandr marks new output blocks.
+# The * marker on a rate indicates the current mode; + indicates the preferred
+# mode reported by the monitor's EDID.
 xrandr | awk '
 /^[A-Z].*[[:space:]]connected[[:space:]]/ {
     output = $1

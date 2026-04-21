@@ -1,6 +1,9 @@
 #!/bin/bash
-# Save the current DE panel layout for a named profile
+# Snapshot the current DE panel layout into a named profile.
 # Usage: display-save-layout.sh <profile>
+#
+# The actual snapshotting is delegated to hooks/<de>/save-panels.sh so that
+# the logic stays DE-specific and this script remains a thin dispatcher.
 
 source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../lib/common.sh"
 

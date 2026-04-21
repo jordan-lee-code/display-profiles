@@ -1,6 +1,11 @@
 #!/bin/bash
-# Apply a named display profile
+# Apply a named display profile.
 # Usage: display-switch.sh <profile>
+#
+# Applies the xrandr config, then restores the panel layout and restarts the
+# DE compositor if a panel-layout.sh exists for the profile. The compositor
+# restart is skipped when there is no panel layout because xrandr alone does
+# not require it, and an unnecessary restart is disruptive.
 
 source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../lib/common.sh"
 
@@ -34,5 +39,7 @@ if [[ -f "$PROFILE_DIR/panel-layout.sh" ]]; then
     fi
 fi
 
+# Write the active profile name so display-apply-saved.sh can restore it on
+# the next login, and so display-shutdown.sh knows the current state.
 echo "$PROFILE" > "$HOME/.config/display-mode"
 echo "Done."

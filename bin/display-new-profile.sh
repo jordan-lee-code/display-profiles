@@ -1,5 +1,11 @@
 #!/bin/bash
-# Interactive wizard to create a new named display profile
+# Interactive wizard to create a new named display profile.
+#
+# Walks through: profile name, enable/disable each output, resolution, refresh
+# rate, primary selection, and multi-monitor positioning. Positions are tracked
+# as absolute pixel coordinates so any layout (including centered arrangements)
+# can be expressed. The generated xrandr.sh uses --pos rather than relative
+# flags like --left-of, which cannot represent centering.
 
 source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../lib/common.sh"
 
@@ -30,8 +36,8 @@ echo ""
 
 # --- Configure each output ---
 declare -A ENABLED
-declare -A MODE_W
-declare -A MODE_H
+declare -A MODE_W   # width in pixels
+declare -A MODE_H   # height in pixels
 declare -A RATE
 
 for OUTPUT in "${ALL_OUTPUTS[@]}"; do
@@ -54,6 +60,7 @@ for OUTPUT in "${ALL_OUTPUTS[@]}"; do
     read -rp "  Select [1]: " idx; idx="${idx:-1}"
     SELECTED_RES="${RESOLUTIONS[$((idx-1))]}"
 
+    # Split "WxH" into separate integers for later arithmetic.
     IFS='x' read -r w h <<< "$SELECTED_RES"
     MODE_W[$OUTPUT]="$w"
     MODE_H[$OUTPUT]="$h"
@@ -91,6 +98,10 @@ if [[ ${#ENABLED_LIST[@]} -gt 1 ]]; then
 fi
 
 # --- Absolute position tracking ---
+# The primary is anchored at (0,0). Every other output is placed relative to
+# an already-positioned output using calculated pixel offsets. All coordinates
+# are integers (bash does not support floats); centering uses integer division,
+# which may be off by one pixel on odd-width differences — acceptable for display use.
 declare -A POS_X
 declare -A POS_Y
 declare -a POSITIONED
@@ -106,7 +117,9 @@ for OUTPUT in "${ENABLED_LIST[@]}"; do
     echo ""
     echo "Position $OUTPUT (${MODE_W[$OUTPUT]}x${MODE_H[$OUTPUT]}):"
 
-    # Build options list
+    # Build a dynamic option list against every already-placed output.
+    # Six spatial options are offered per reference output, plus two
+    # bounding-box options (centered above/below all) once 2+ are placed.
     declare -a OPT_LABELS=()
     declare -a OPT_X=()
     declare -a OPT_Y=()
@@ -119,38 +132,39 @@ for OUTPUT in "${ENABLED_LIST[@]}"; do
         OW=${MODE_W[$OUTPUT]}
         OH=${MODE_H[$OUTPUT]}
 
-        # Left of REF
+        # Left: output starts where REF starts, shifted left by output width.
         OPT_LABELS+=("Left of $REF")
         OPT_X+=($((RX - OW)))
         OPT_Y+=($RY)
 
-        # Right of REF
+        # Right: output starts at the right edge of REF.
         OPT_LABELS+=("Right of $REF")
         OPT_X+=($((RX + RW)))
         OPT_Y+=($RY)
 
-        # Above REF
+        # Above: output bottom edge aligns with REF top edge.
         OPT_LABELS+=("Above $REF")
         OPT_X+=($RX)
         OPT_Y+=($((RY - OH)))
 
-        # Below REF
+        # Below: output top edge aligns with REF bottom edge.
         OPT_LABELS+=("Below $REF")
         OPT_X+=($RX)
         OPT_Y+=($((RY + RH)))
 
-        # Centered above REF
+        # Centered above: horizontally centred over REF, above it.
         OPT_LABELS+=("Centered above $REF")
         OPT_X+=($((RX + (RW - OW) / 2)))
         OPT_Y+=($((RY - OH)))
 
-        # Centered below REF
+        # Centered below: horizontally centred over REF, below it.
         OPT_LABELS+=("Centered below $REF")
         OPT_X+=($((RX + (RW - OW) / 2)))
         OPT_Y+=($((RY + RH)))
     done
 
-    # If 2+ outputs already positioned, offer centered-above/below all
+    # Bounding-box centering: compute the pixel extent of all placed outputs,
+    # then centre the new output over the whole group.
     if [[ ${#POSITIONED[@]} -ge 2 ]]; then
         min_bx=999999; max_bx=0; min_by=999999; max_by=0
         for REF in "${POSITIONED[@]}"; do
@@ -184,13 +198,17 @@ for OUTPUT in "${ENABLED_LIST[@]}"; do
     POS_Y[$OUTPUT]="${OPT_Y[$chosen]}"
     POSITIONED+=("$OUTPUT")
 
+    # Reset option arrays for the next output.
     unset OPT_LABELS OPT_X OPT_Y
     declare -a OPT_LABELS=()
     declare -a OPT_X=()
     declare -a OPT_Y=()
 done
 
-# --- Normalize: shift all coords so min x,y = 0 ---
+# --- Normalize coordinates ---
+# Placements to the left of or above the primary produce negative coordinates.
+# xrandr accepts negative positions but they behave unpredictably on some
+# drivers, so shift the whole layout so the minimum x and y are both zero.
 min_x=999999; min_y=999999
 for OUTPUT in "${ENABLED_LIST[@]}"; do
     (( POS_X[$OUTPUT] < min_x )) && min_x=${POS_X[$OUTPUT]}
@@ -202,10 +220,12 @@ for OUTPUT in "${ENABLED_LIST[@]}"; do
 done
 
 # --- Layout preview ---
+# Compute the total bounding box so the ASCII diagram can be scaled to fit
+# in a fixed 60x12 character grid. Each output is drawn as a labelled box.
 echo ""
 echo "Layout preview:"
 echo ""
-# Find bounding box for scale calculation
+
 max_x=0; max_y=0
 for OUTPUT in "${ENABLED_LIST[@]}"; do
     rx=$((POS_X[$OUTPUT] + MODE_W[$OUTPUT]))
@@ -214,7 +234,6 @@ for OUTPUT in "${ENABLED_LIST[@]}"; do
     (( ry > max_y )) && max_y=$ry
 done
 
-# Build a 60-wide x 20-tall character grid
 COLS=60; ROWS=12
 declare -a GRID
 for ((r=0; r<ROWS; r++)); do
@@ -227,7 +246,7 @@ for OUTPUT in "${ENABLED_LIST[@]}"; do
     x=${POS_X[$OUTPUT]}; y=${POS_Y[$OUTPUT]}
     w=${MODE_W[$OUTPUT]}; h=${MODE_H[$OUTPUT]}
 
-    # Map to grid coords
+    # Scale pixel coordinates down to grid coordinates.
     gx=$(( x * COLS / max_x ))
     gy=$(( y * ROWS / max_y ))
     gw=$(( w * COLS / max_x ))
@@ -241,13 +260,11 @@ for OUTPUT in "${ENABLED_LIST[@]}"; do
     for ((r=gy; r<gy+gh && r<ROWS; r++)); do
         line="${GRID[$r]}"
         if (( r == gy || r == gy+gh-1 )); then
-            # Top/bottom border
             border=""
             for ((c=0; c<gw; c++)); do border+="-"; done
             line="${line:0:$gx}+${border}+${line:$((gx+gw+2))}"
         else
             inner="$(printf "%-${gw}s" "")"
-            # Place label on middle row
             if (( r == gy + gh/2 )); then
                 llen=${#label}
                 lpad=$(( (gw - llen) / 2 ))
@@ -265,7 +282,7 @@ done
 echo "  (* = primary)"
 echo ""
 
-# Text summary
+# Pixel coordinate summary alongside the diagram.
 for OUTPUT in "${ENABLED_LIST[@]}"; do
     marker=""
     [[ "$OUTPUT" == "$PRIMARY" ]] && marker=" [PRIMARY]"
@@ -279,6 +296,9 @@ done
 echo ""
 
 # --- Generate xrandr.sh ---
+# Uses --pos for absolute placement. --pos and --left-of/--right-of are
+# mutually exclusive in xrandr; --pos is the only way to express layouts
+# where outputs are not simply tiled edge-to-edge.
 {
     echo "#!/bin/bash"
     printf "xrandr"
