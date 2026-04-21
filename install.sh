@@ -9,22 +9,23 @@ echo "Installing cinnamon-display-profiles..."
 
 # Scripts
 mkdir -p "$HOME/bin"
-cp "$REPO_DIR"/bin/display-*.sh "$HOME/bin/"
-chmod +x "$HOME/bin"/display-*.sh
-echo "  Scripts installed to ~/bin/"
+for f in "$REPO_DIR"/bin/display-*.sh; do
+    ln -sf "$f" "$HOME/bin/$(basename "$f")"
+done
+echo "  Scripts symlinked to ~/bin/"
 
 # Start menu entries
 mkdir -p "$HOME/.local/share/applications"
-cp "$REPO_DIR/desktop/display-work.desktop" "$HOME/.local/share/applications/"
-cp "$REPO_DIR/desktop/display-personal.desktop" "$HOME/.local/share/applications/"
-cp "$REPO_DIR/desktop/display-shutdown.desktop" "$HOME/.local/share/applications/"
+for f in display-work.desktop display-personal.desktop display-shutdown.desktop; do
+    ln -sf "$REPO_DIR/desktop/$f" "$HOME/.local/share/applications/$f"
+done
 update-desktop-database "$HOME/.local/share/applications/" 2>/dev/null || true
-echo "  Desktop entries installed to ~/.local/share/applications/"
+echo "  Desktop entries symlinked to ~/.local/share/applications/"
 
 # Autostart
 mkdir -p "$HOME/.config/autostart"
-cp "$REPO_DIR/desktop/display-apply.desktop" "$HOME/.config/autostart/"
-echo "  Autostart entry installed to ~/.config/autostart/"
+ln -sf "$REPO_DIR/desktop/display-apply.desktop" "$HOME/.config/autostart/display-apply.desktop"
+echo "  Autostart entry symlinked to ~/.config/autostart/"
 
 echo ""
 echo "Installation complete. Next steps:"
