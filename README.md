@@ -277,8 +277,6 @@ cinnamon --replace &
 | `display-apply-saved.sh` | Apply the last saved profile (used by autostart) |
 | `display-shutdown.sh` | Prompt for next profile, save choice, power off |
 | `display-restart.sh` | Prompt for next profile, save choice, reboot |
-| `display-work.sh` | Compatibility wrapper for `display-switch.sh work` |
-| `display-personal.sh` | Compatibility wrapper for `display-switch.sh personal` |
 
 ---
 
