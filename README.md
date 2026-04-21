@@ -1,5 +1,7 @@
 # display-profiles
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 Switch between named display profiles on Linux — applying xrandr configuration, optional DE panel layouts, and persisting the active profile across reboots.
 
 Built to work around the Nvidia driver bug that drops refresh rate and forgets display arrangement after mode changes, and for use with software KVMs like [Barrier](https://github.com/debauchee/barrier) where switching between work and personal use requires a different monitor layout each time.
@@ -299,3 +301,9 @@ ls ~/.config/display-profiles/<name>/
 **Zenity dialog not appearing at shutdown** — ensure `DISPLAY` is set. The scripts export `DISPLAY=:0` as a fallback, but if your display server is on a different display, update the export in `display-shutdown.sh` and `display-restart.sh`.
 
 **`display-switch.sh: command not found`** — `~/bin` is not in your PATH. Add it to `~/.bashrc` as described in the installation steps.
+
+---
+
+## License
+
+MIT. See [LICENSE](LICENSE).
