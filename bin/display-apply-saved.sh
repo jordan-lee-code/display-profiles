@@ -1,10 +1,9 @@
 #!/bin/bash
-# Apply the saved display mode on startup
+# Apply the last saved profile on login (called by autostart)
 
-MODE=$(cat "$HOME/.config/display-mode" 2>/dev/null || echo "personal")
+source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../lib/common.sh"
 
-if [ "$MODE" = "work" ]; then
-    "$HOME/bin/display-work.sh"
-else
-    "$HOME/bin/display-personal.sh"
-fi
+PROFILE=$(cat "$HOME/.config/display-mode" 2>/dev/null)
+[[ -z "$PROFILE" ]] && exit 0
+
+exec "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/display-switch.sh" "$PROFILE"

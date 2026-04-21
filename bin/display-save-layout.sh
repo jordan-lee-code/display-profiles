@@ -1,20 +1,31 @@
 #!/bin/bash
-# Save the current Cinnamon panel layout for the given mode
-# Usage: display-save-layout.sh work|personal
+# Save the current DE panel layout for a named profile
+# Usage: display-save-layout.sh <profile>
 
-MODE="${1:-}"
-if [[ "$MODE" != "work" && "$MODE" != "personal" ]]; then
-    echo "Usage: display-save-layout.sh work|personal" >&2
+source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../lib/common.sh"
+
+PROFILE="${1:-}"
+if [[ -z "$PROFILE" ]]; then
+    echo "Usage: display-save-layout.sh <profile>" >&2
+    echo "Available profiles:" >&2
+    list_profiles | sed 's/^/  /' >&2
     exit 1
 fi
 
-SAVE_FILE="$HOME/.config/cinnamon-panels-${MODE}.sh"
+PROFILE_DIR="$(get_profiles_dir)/$PROFILE"
+if [[ ! -d "$PROFILE_DIR" ]]; then
+    echo "Profile '$PROFILE' not found. Create it first with display-new-profile.sh" >&2
+    exit 1
+fi
 
-echo "#!/bin/bash" > "$SAVE_FILE"
-for key in panels-enabled panels-height panels-autohide panels-hide-delay panels-show-delay enabled-applets next-applet-id; do
-    val=$(dconf read /org/cinnamon/$key)
-    [[ -n "$val" ]] && echo "dconf write /org/cinnamon/$key '$val'" >> "$SAVE_FILE"
-done
-chmod +x "$SAVE_FILE"
+DE=$(detect_de)
+SAVE_HOOK="$(get_hooks_dir)/$DE/save-panels.sh"
 
-echo "Saved $MODE panel layout to $SAVE_FILE"
+if [[ ! -f "$SAVE_HOOK" ]]; then
+    echo "No panel layout hook found for DE: $DE" >&2
+    echo "Supported DEs: $(ls "$(get_hooks_dir)")" >&2
+    exit 1
+fi
+
+bash "$SAVE_HOOK" "$PROFILE_DIR"
+echo "Saved $DE panel layout for profile '$PROFILE'"

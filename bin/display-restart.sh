@@ -1,20 +1,11 @@
 #!/bin/bash
-# Prompt for display mode, save the choice, then restart
+# Prompt for display profile, save the choice, then reboot
 
-export DISPLAY=:0
-export XAUTHORITY="$HOME/.Xauthority"
+export DISPLAY="${DISPLAY:-:0}"
+export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
 
-zenity --question \
-    --title="Restart — Display Mode" \
-    --text="Select display mode for next startup:" \
-    --ok-label="Work (DP-2 only)" \
-    --cancel-label="Personal (both screens)" \
-    2>/dev/null
+source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../lib/common.sh"
 
-if [ $? -eq 0 ]; then
-    echo "work" > "$HOME/.config/display-mode"
-else
-    echo "personal" > "$HOME/.config/display-mode"
-fi
-
+PROFILE=$(select_profile "Restart — Display Profile") || exit 1
+echo "$PROFILE" > "$HOME/.config/display-mode"
 systemctl reboot

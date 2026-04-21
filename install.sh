@@ -1,11 +1,11 @@
 #!/bin/bash
-# Install cinnamon-display-profiles to the current user's environment
+# Install display-profiles to the current user's environment
 
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "Installing cinnamon-display-profiles..."
+echo "Installing display-profiles..."
 
 # Scripts
 mkdir -p "$HOME/bin"
@@ -14,35 +14,41 @@ for f in "$REPO_DIR"/bin/display-*.sh; do
 done
 echo "  Scripts symlinked to ~/bin/"
 
-# Start menu entries
-mkdir -p "$HOME/.local/share/applications"
-for f in display-work.desktop display-personal.desktop display-shutdown.desktop; do
-    ln -sf "$REPO_DIR/desktop/$f" "$HOME/.local/share/applications/$f"
-done
-update-desktop-database "$HOME/.local/share/applications/" 2>/dev/null || true
-echo "  Desktop entries symlinked to ~/.local/share/applications/"
-
-# Autostart
+# Autostart — generated with real HOME path (desktop files can't expand ~)
 mkdir -p "$HOME/.config/autostart"
-ln -sf "$REPO_DIR/desktop/display-apply.desktop" "$HOME/.config/autostart/display-apply.desktop"
-echo "  Autostart entry symlinked to ~/.config/autostart/"
+sed "s|%%HOME%%|$HOME|g" "$REPO_DIR/desktop/display-apply.desktop" \
+    > "$HOME/.config/autostart/display-apply.desktop"
+echo "  Autostart entry installed to ~/.config/autostart/"
+
+# Shutdown launcher
+mkdir -p "$HOME/.local/share/applications"
+sed "s|%%HOME%%|$HOME|g" "$REPO_DIR/desktop/display-shutdown.desktop" \
+    > "$HOME/.local/share/applications/display-shutdown.desktop"
+update-desktop-database "$HOME/.local/share/applications/" 2>/dev/null || true
+echo "  Shutdown launcher installed to ~/.local/share/applications/"
+
+# Default profiles
+PROFILES_DIR="$HOME/.config/display-profiles"
+if [[ ! -d "$PROFILES_DIR/work" ]] && [[ ! -d "$PROFILES_DIR/personal" ]]; then
+    echo ""
+    echo "  No profiles found. Run display-setup.sh to discover your outputs,"
+    echo "  then display-new-profile.sh to create profiles interactively."
+else
+    echo "  Existing profiles preserved in $PROFILES_DIR"
+fi
+
+# PATH reminder
+if ! echo "$PATH" | tr ':' '\n' | grep -q "$HOME/bin"; then
+    echo ""
+    echo "  Note: ~/bin is not in your PATH. Add this to ~/.bashrc:"
+    echo "    export PATH=\"\$HOME/bin:\$PATH\""
+fi
 
 echo ""
-echo "Installation complete. Next steps:"
+echo "Installation complete."
 echo ""
-echo "  1. Edit ~/bin/display-work.sh and ~/bin/display-personal.sh to match"
-echo "     your monitor output names (default: DP-0, DP-2) and resolution."
-echo ""
-echo "  2. Save your panel layouts:"
-echo "       display-save-layout.sh personal   (while both screens are up)"
-echo "       display-work.sh                   (switch to work mode)"
-echo "       display-save-layout.sh work        (after arranging the panel)"
-echo ""
-echo "  3. Optional - Cinnamenu integration:"
-CINNAMENU_JS="\$HOME/.local/share/cinnamon/applets/Cinnamenu@json/5.8/sidebar.js"
-echo "     Edit $CINNAMENU_JS"
-echo "     Replace ShutdownRemote() with:"
-echo "       Util.spawnCommandLine('\$HOME/bin/display-shutdown.sh')"
-echo "     Add a Restart button using:"
-echo "       Util.spawnCommandLine('\$HOME/bin/display-restart.sh')"
-echo "     Then reload Cinnamon: cinnamon --replace &"
+echo "Next steps:"
+echo "  display-setup.sh          — see connected outputs and saved profiles"
+echo "  display-new-profile.sh    — create a new profile interactively"
+echo "  display-switch.sh <name>  — apply a profile"
+echo "  display-save-layout.sh <name>  — save current panel layout to a profile"
