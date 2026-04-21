@@ -13,7 +13,6 @@ Built to work around the Nvidia driver bug that drops refresh rate and forgets d
 - Prompts for the next profile at shutdown and restart via a Zenity dialog or terminal menu
 - Applies the saved profile automatically on login via autostart
 - Interactive wizard to create new profiles with output discovery
-- Thin compatibility wrappers so existing shortcuts keep working
 
 ---
 
@@ -88,7 +87,7 @@ The wizard walks through:
 3. **Resolution** — available modes for each enabled output, highest first
 4. **Refresh rate** — available rates for the chosen resolution
 5. **Primary output** — which output is the primary (where panels and dialogs appear by default)
-6. **Positions** — for multi-monitor setups, where each non-primary output sits relative to the primary (left, right, above, below)
+6. **Positions** — for each remaining output, choose placement relative to any already-positioned screen: left, right, above, below, centered-above, or centered-below. With two or more screens placed, centered-above-all and centered-below-all are also offered. An ASCII diagram and pixel coordinate summary are shown before saving.
 7. **Start menu shortcut** — optionally creates a `.desktop` launcher so you can switch from the application menu
 8. **Panel layout** — if a supported DE is detected, optionally snapshots the current panel configuration into the profile
 
@@ -143,8 +142,7 @@ To update a saved layout, just re-run `display-save-layout.sh <profile>` after r
 ### 7. Test switching
 
 ```bash
-display-switch.sh work
-display-switch.sh personal
+display-switch.sh <profile>
 ```
 
 ---
@@ -299,6 +297,12 @@ ls ~/.config/display-profiles/<name>/
 **Zenity dialog not appearing at shutdown** — ensure `DISPLAY` is set. The scripts export `DISPLAY=:0` as a fallback, but if your display server is on a different display, update the export in `display-shutdown.sh` and `display-restart.sh`.
 
 **`display-switch.sh: command not found`** — `~/bin` is not in your PATH. Add it to `~/.bashrc` as described in the installation steps.
+
+---
+
+## Contributing
+
+PRs welcome. The most useful additions are DE hooks — if you add support for GNOME, XFCE, or another desktop, the `hooks/<de>/` pattern is all it takes. See the DE support section above.
 
 ---
 
