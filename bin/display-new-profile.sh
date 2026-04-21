@@ -30,7 +30,8 @@ echo ""
 
 # --- Configure each output ---
 declare -A ENABLED
-declare -A MODE
+declare -A MODE_W
+declare -A MODE_H
 declare -A RATE
 
 for OUTPUT in "${ALL_OUTPUTS[@]}"; do
@@ -53,6 +54,10 @@ for OUTPUT in "${ALL_OUTPUTS[@]}"; do
     read -rp "  Select [1]: " idx; idx="${idx:-1}"
     SELECTED_RES="${RESOLUTIONS[$((idx-1))]}"
 
+    IFS='x' read -r w h <<< "$SELECTED_RES"
+    MODE_W[$OUTPUT]="$w"
+    MODE_H[$OUTPUT]="$h"
+
     mapfile -t RATES < <(xrandr | awk -v out="$OUTPUT" -v res="$SELECTED_RES" '
         $0 ~ "^"out" connected" { found=1; next }
         found && /^[A-Z]/ { exit }
@@ -67,8 +72,6 @@ for OUTPUT in "${ALL_OUTPUTS[@]}"; do
     echo "  Available refresh rates for $SELECTED_RES:"
     for i in "${!RATES[@]}"; do echo "    $((i+1)). ${RATES[$i]}Hz"; done
     read -rp "  Select [1]: " idx; idx="${idx:-1}"
-
-    MODE[$OUTPUT]="$SELECTED_RES"
     RATE[$OUTPUT]="${RATES[$((idx-1))]}"
 done
 
@@ -87,27 +90,193 @@ if [[ ${#ENABLED_LIST[@]} -gt 1 ]]; then
     PRIMARY="${ENABLED_LIST[$((idx-1))]}"
 fi
 
-# --- Positions for non-primary outputs ---
-declare -A POSITION
-if [[ ${#ENABLED_LIST[@]} -gt 1 ]]; then
+# --- Absolute position tracking ---
+declare -A POS_X
+declare -A POS_Y
+declare -a POSITIONED
+
+POS_X[$PRIMARY]=0
+POS_Y[$PRIMARY]=0
+POSITIONED=("$PRIMARY")
+
+# --- Position remaining enabled outputs ---
+for OUTPUT in "${ENABLED_LIST[@]}"; do
+    [[ "$OUTPUT" == "$PRIMARY" ]] && continue
+
     echo ""
-    echo "Position outputs relative to $PRIMARY:"
-    for OUTPUT in "${ENABLED_LIST[@]}"; do
-        [[ "$OUTPUT" == "$PRIMARY" ]] && continue
-        echo "  $OUTPUT:"
-        echo "    1. Left of $PRIMARY"
-        echo "    2. Right of $PRIMARY"
-        echo "    3. Above $PRIMARY"
-        echo "    4. Below $PRIMARY"
-        read -rp "  Position [2]: " idx; idx="${idx:-2}"
-        case "$idx" in
-            1) POSITION[$OUTPUT]="--left-of $PRIMARY"  ;;
-            3) POSITION[$OUTPUT]="--above $PRIMARY"    ;;
-            4) POSITION[$OUTPUT]="--below $PRIMARY"    ;;
-            *) POSITION[$OUTPUT]="--right-of $PRIMARY" ;;
-        esac
+    echo "Position $OUTPUT (${MODE_W[$OUTPUT]}x${MODE_H[$OUTPUT]}):"
+
+    # Build options list
+    declare -a OPT_LABELS=()
+    declare -a OPT_X=()
+    declare -a OPT_Y=()
+
+    for REF in "${POSITIONED[@]}"; do
+        RW=${MODE_W[$REF]}
+        RH=${MODE_H[$REF]}
+        RX=${POS_X[$REF]}
+        RY=${POS_Y[$REF]}
+        OW=${MODE_W[$OUTPUT]}
+        OH=${MODE_H[$OUTPUT]}
+
+        # Left of REF
+        OPT_LABELS+=("Left of $REF")
+        OPT_X+=($((RX - OW)))
+        OPT_Y+=($RY)
+
+        # Right of REF
+        OPT_LABELS+=("Right of $REF")
+        OPT_X+=($((RX + RW)))
+        OPT_Y+=($RY)
+
+        # Above REF
+        OPT_LABELS+=("Above $REF")
+        OPT_X+=($RX)
+        OPT_Y+=($((RY - OH)))
+
+        # Below REF
+        OPT_LABELS+=("Below $REF")
+        OPT_X+=($RX)
+        OPT_Y+=($((RY + RH)))
+
+        # Centered above REF
+        OPT_LABELS+=("Centered above $REF")
+        OPT_X+=($((RX + (RW - OW) / 2)))
+        OPT_Y+=($((RY - OH)))
+
+        # Centered below REF
+        OPT_LABELS+=("Centered below $REF")
+        OPT_X+=($((RX + (RW - OW) / 2)))
+        OPT_Y+=($((RY + RH)))
     done
-fi
+
+    # If 2+ outputs already positioned, offer centered-above/below all
+    if [[ ${#POSITIONED[@]} -ge 2 ]]; then
+        min_bx=999999; max_bx=0; min_by=999999; max_by=0
+        for REF in "${POSITIONED[@]}"; do
+            x=${POS_X[$REF]}; y=${POS_Y[$REF]}
+            rx=$((x + MODE_W[$REF])); ry=$((y + MODE_H[$REF]))
+            (( x  < min_bx )) && min_bx=$x
+            (( rx > max_bx )) && max_bx=$rx
+            (( y  < min_by )) && min_by=$y
+            (( ry > max_by )) && max_by=$ry
+        done
+        total_w=$((max_bx - min_bx))
+        OW=${MODE_W[$OUTPUT]}
+        OH=${MODE_H[$OUTPUT]}
+
+        OPT_LABELS+=("Centered above all screens")
+        OPT_X+=($((min_bx + (total_w - OW) / 2)))
+        OPT_Y+=($((min_by - OH)))
+
+        OPT_LABELS+=("Centered below all screens")
+        OPT_X+=($((min_bx + (total_w - OW) / 2)))
+        OPT_Y+=($max_by)
+    fi
+
+    for i in "${!OPT_LABELS[@]}"; do
+        echo "  $((i+1)). ${OPT_LABELS[$i]}"
+    done
+    read -rp "  Position [1]: " idx; idx="${idx:-1}"
+    chosen=$((idx - 1))
+
+    POS_X[$OUTPUT]="${OPT_X[$chosen]}"
+    POS_Y[$OUTPUT]="${OPT_Y[$chosen]}"
+    POSITIONED+=("$OUTPUT")
+
+    unset OPT_LABELS OPT_X OPT_Y
+    declare -a OPT_LABELS=()
+    declare -a OPT_X=()
+    declare -a OPT_Y=()
+done
+
+# --- Normalize: shift all coords so min x,y = 0 ---
+min_x=999999; min_y=999999
+for OUTPUT in "${ENABLED_LIST[@]}"; do
+    (( POS_X[$OUTPUT] < min_x )) && min_x=${POS_X[$OUTPUT]}
+    (( POS_Y[$OUTPUT] < min_y )) && min_y=${POS_Y[$OUTPUT]}
+done
+for OUTPUT in "${ENABLED_LIST[@]}"; do
+    POS_X[$OUTPUT]=$(( POS_X[$OUTPUT] - min_x ))
+    POS_Y[$OUTPUT]=$(( POS_Y[$OUTPUT] - min_y ))
+done
+
+# --- Layout preview ---
+echo ""
+echo "Layout preview:"
+echo ""
+# Find bounding box for scale calculation
+max_x=0; max_y=0
+for OUTPUT in "${ENABLED_LIST[@]}"; do
+    rx=$((POS_X[$OUTPUT] + MODE_W[$OUTPUT]))
+    ry=$((POS_Y[$OUTPUT] + MODE_H[$OUTPUT]))
+    (( rx > max_x )) && max_x=$rx
+    (( ry > max_y )) && max_y=$ry
+done
+
+# Build a 60-wide x 20-tall character grid
+COLS=60; ROWS=12
+declare -a GRID
+for ((r=0; r<ROWS; r++)); do
+    line=""
+    for ((c=0; c<COLS; c++)); do line+=" "; done
+    GRID[$r]="$line"
+done
+
+for OUTPUT in "${ENABLED_LIST[@]}"; do
+    x=${POS_X[$OUTPUT]}; y=${POS_Y[$OUTPUT]}
+    w=${MODE_W[$OUTPUT]}; h=${MODE_H[$OUTPUT]}
+
+    # Map to grid coords
+    gx=$(( x * COLS / max_x ))
+    gy=$(( y * ROWS / max_y ))
+    gw=$(( w * COLS / max_x ))
+    gh=$(( h * ROWS / max_y ))
+    [[ $gw -lt 5 ]] && gw=5
+    [[ $gh -lt 3 ]] && gh=3
+
+    label="$OUTPUT"
+    [[ "$OUTPUT" == "$PRIMARY" ]] && label+="*"
+
+    for ((r=gy; r<gy+gh && r<ROWS; r++)); do
+        line="${GRID[$r]}"
+        if (( r == gy || r == gy+gh-1 )); then
+            # Top/bottom border
+            border=""
+            for ((c=0; c<gw; c++)); do border+="-"; done
+            line="${line:0:$gx}+${border}+${line:$((gx+gw+2))}"
+        else
+            inner="$(printf "%-${gw}s" "")"
+            # Place label on middle row
+            if (( r == gy + gh/2 )); then
+                llen=${#label}
+                lpad=$(( (gw - llen) / 2 ))
+                inner="$(printf "%${lpad}s%s%-$((gw - lpad - llen))s" "" "$label" "")"
+            fi
+            line="${line:0:$gx}|${inner}|${line:$((gx+gw+2))}"
+        fi
+        GRID[$r]="$line"
+    done
+done
+
+for ((r=0; r<ROWS; r++)); do
+    echo "  ${GRID[$r]}"
+done
+echo "  (* = primary)"
+echo ""
+
+# Text summary
+for OUTPUT in "${ENABLED_LIST[@]}"; do
+    marker=""
+    [[ "$OUTPUT" == "$PRIMARY" ]] && marker=" [PRIMARY]"
+    printf "  %-10s  pos %sx%s,  size %sx%s%s\n" \
+        "$OUTPUT" "${POS_X[$OUTPUT]}" "${POS_Y[$OUTPUT]}" \
+        "${MODE_W[$OUTPUT]}" "${MODE_H[$OUTPUT]}" "$marker"
+done
+for OUTPUT in "${ALL_OUTPUTS[@]}"; do
+    [[ -v ENABLED[$OUTPUT] ]] || echo "  $OUTPUT  off"
+done
+echo ""
 
 # --- Generate xrandr.sh ---
 {
@@ -115,10 +284,10 @@ fi
     printf "xrandr"
     for OUTPUT in "${ALL_OUTPUTS[@]}"; do
         if [[ -v ENABLED[$OUTPUT] ]]; then
-            printf " \\\\\n    --output %s --mode %s --rate %s" \
-                "$OUTPUT" "${MODE[$OUTPUT]}" "${RATE[$OUTPUT]}"
+            printf " \\\\\n    --output %s --mode %sx%s --rate %s --pos %sx%s" \
+                "$OUTPUT" "${MODE_W[$OUTPUT]}" "${MODE_H[$OUTPUT]}" \
+                "${RATE[$OUTPUT]}" "${POS_X[$OUTPUT]}" "${POS_Y[$OUTPUT]}"
             [[ "$OUTPUT" == "$PRIMARY" ]] && printf " --primary"
-            [[ -v POSITION[$OUTPUT] ]] && printf " %s" "${POSITION[$OUTPUT]}"
         else
             printf " \\\\\n    --output %s --off" "$OUTPUT"
         fi
