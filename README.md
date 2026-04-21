@@ -13,44 +13,87 @@ Built to work around the Nvidia driver bug that drops refresh rate and forgets d
 - Interactive wizard to create new profiles with output discovery
 - Thin compatibility wrappers so existing shortcuts keep working
 
+---
+
 ## Requirements
 
-- `xrandr` — display configuration (`x11-xserver-utils`)
-- `zenity` — GTK dialog for shutdown/restart prompts (optional — falls back to terminal)
-- `dconf-tools` — panel layout save/restore (Cinnamon only)
+| Package | Purpose | Required |
+|---------|---------|----------|
+| `x11-xserver-utils` | Provides `xrandr` | Yes |
+| `zenity` | GTK dialog for shutdown/restart prompts | No — falls back to terminal `select` |
+| `dconf-tools` | Panel layout save/restore | Cinnamon only |
+
+Install on Debian/Ubuntu/Mint:
 
 ```bash
 sudo apt install x11-xserver-utils zenity dconf-tools
 ```
 
+---
+
 ## Installation
+
+### 1. Clone the repo
 
 ```bash
 git clone https://github.com/jordan-lee-code/display-profiles.git
 cd display-profiles
+```
+
+### 2. Run the installer
+
+```bash
 bash install.sh
 ```
 
-Make sure `~/bin` is in your PATH:
+This will:
+- Symlink all `bin/display-*.sh` scripts into `~/bin/` (edits to the repo take effect immediately)
+- Generate and install `display-shutdown.desktop` into `~/.local/share/applications/`
+- Generate and install `display-apply.desktop` into `~/.config/autostart/` (applies saved profile on every login)
+
+### 3. Add `~/bin` to your PATH
+
+Check if it's already there:
+
+```bash
+echo $PATH | tr ':' '\n' | grep -q "$HOME/bin" && echo "already in PATH" || echo "not in PATH"
+```
+
+If not, add it:
 
 ```bash
 echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 ```
 
-## Quick start
+### 4. Discover your outputs
 
 ```bash
-display-setup.sh          # see connected outputs and saved profiles
-display-new-profile.sh    # create a new profile interactively
-display-switch.sh <name>  # apply a profile
+display-setup.sh
 ```
 
-## Creating a profile
+This lists every connected output with its available resolutions and refresh rates, and any profiles already saved. Use this to find the exact output names (`DP-0`, `HDMI-1`, etc.) you'll need when creating profiles.
 
-`display-new-profile.sh` walks through output discovery, resolution and refresh rate selection, primary output, and relative positioning:
+### 5. Create your first profile
+
+```bash
+display-new-profile.sh
+```
+
+The wizard walks through:
+
+1. **Profile name** — used as the directory name and in commands, e.g. `work`, `gaming`, `desk`
+2. **Enable/disable each output** — connected outputs are listed; disable any you don't want active
+3. **Resolution** — available modes for each enabled output, highest first
+4. **Refresh rate** — available rates for the chosen resolution
+5. **Primary output** — which output is the primary (where panels and dialogs appear by default)
+6. **Positions** — for multi-monitor setups, where each non-primary output sits relative to the primary (left, right, above, below)
+7. **Start menu shortcut** — optionally creates a `.desktop` launcher so you can switch from the application menu
+8. **Panel layout** — if a supported DE is detected, optionally snapshots the current panel configuration into the profile
+
+Example session:
 
 ```
-Profile name: gaming
+Profile name: work
 Connected outputs:
   1. DP-0
   2. DP-2
@@ -64,61 +107,162 @@ Enable DP-2? [Y/n]
     1. 165.08Hz
     2. 143.91Hz
   Select [1]:
+Profile description (optional): Single screen, right monitor only
 Create start menu shortcut? [Y/n]
 Save current panel layout for this profile? [Y/n]
+
+Profile 'work' created.
+Switch to this profile with: display-switch.sh work
 ```
 
-Profiles are stored in `~/.config/display-profiles/<name>/` containing:
-- `xrandr.sh` — the generated xrandr command
-- `panel-layout.sh` — optional DE panel restore script
-- `meta` — name, description, created date
+The generated profile is stored at `~/.config/display-profiles/work/` and contains:
 
-## Saving panel layouts
+```
+work/
+├── xrandr.sh        # the generated xrandr command — plain bash, edit freely
+├── panel-layout.sh  # DE panel restore script (if saved)
+└── meta             # name, description, created date
+```
 
-After switching to a profile and arranging panels how you want them:
+Repeat `display-new-profile.sh` for each profile you need.
+
+### 6. Save panel layouts (optional)
+
+If you want each profile to restore a specific panel arrangement, switch to the profile, arrange your panels how you want them in the DE, then run:
 
 ```bash
 display-save-layout.sh <profile>
 ```
 
-The current DE panel configuration is snapshotted into `panel-layout.sh` inside the profile directory. `display-switch.sh` runs it automatically when switching to that profile.
+This snapshots the current panel configuration into `panel-layout.sh` inside the profile directory. `display-switch.sh` applies it automatically on every switch.
 
-## Shutdown and restart
+To update a saved layout, just re-run `display-save-layout.sh <profile>` after rearranging panels.
 
-`display-shutdown.sh` and `display-restart.sh` prompt for a profile before acting. They use a Zenity radiolist if a display is available, or a terminal `select` menu otherwise. Any profile in `~/.config/display-profiles/` appears as an option automatically.
+### 7. Test switching
+
+```bash
+display-switch.sh work
+display-switch.sh personal
+```
+
+---
+
+## Daily use
+
+### Switching profiles on the fly
+
+From a terminal:
+
+```bash
+display-switch.sh <profile>
+```
+
+Or use the start menu shortcuts created during `display-new-profile.sh`.
+
+### Shutdown and restart
+
+`display-shutdown.sh` and `display-restart.sh` show a profile selection dialog before acting — Zenity radiolist if a display is available, terminal `select` menu otherwise. Every profile in `~/.config/display-profiles/` appears automatically.
+
+Use the **Shutdown** entry added to the application menu by `install.sh`, or call the scripts directly.
+
+### Profile applied on login
+
+The autostart entry installed by `install.sh` calls `display-apply-saved.sh` on every login, which reads `~/.config/display-mode` and switches to the last selected profile. No manual intervention needed after selecting a profile at shutdown or restart.
+
+---
+
+## Adding a new profile later
+
+```bash
+display-new-profile.sh
+```
+
+New profiles appear in the shutdown/restart dialog automatically.
+
+## Editing a profile
+
+Profile xrandr commands are plain bash in `~/.config/display-profiles/<name>/xrandr.sh`. Edit directly:
+
+```bash
+nano ~/.config/display-profiles/work/xrandr.sh
+```
+
+To regenerate from scratch, run `display-new-profile.sh` again with the same name and confirm the overwrite.
+
+## Deleting a profile
+
+```bash
+rm -rf ~/.config/display-profiles/<name>
+rm -f ~/.local/share/applications/display-<name>.desktop
+```
+
+---
 
 ## DE support
 
-Panel layout save/restore is handled by hooks in `hooks/<de>/`. Cinnamon is supported out of the box. To add support for another DE, create:
+Panel layout save/restore is handled by hooks in `hooks/<de>/`. Cinnamon is included. To add support for another DE, create two scripts:
 
-- `hooks/<de>/save-panels.sh <profile-dir>` — snapshot current panel config
-- `hooks/<de>/restart-de.sh` — reload the compositor
+**`hooks/<de>/save-panels.sh`** — receives the profile directory as `$1`, writes panel config to `$1/panel-layout.sh`:
 
-The DE is detected from `$XDG_CURRENT_DESKTOP`.
+```bash
+#!/bin/bash
+PROFILE_DIR="$1"
+# write panel restore commands to $PROFILE_DIR/panel-layout.sh
+chmod +x "$PROFILE_DIR/panel-layout.sh"
+```
+
+**`hooks/<de>/restart-de.sh`** — reloads the compositor/shell after panel config is applied:
+
+```bash
+#!/bin/bash
+# e.g. for GNOME:
+# busctl --user call org.gnome.Shell /org/gnome/Shell org.gnome.Shell Eval s 'Meta.restart()'
+```
+
+The DE is detected from `$XDG_CURRENT_DESKTOP`. Supported values: `cinnamon`, `gnome`, `kde`, `xfce`, `mate`.
+
+---
 
 ## Cinnamenu integration (optional)
 
-Replace Cinnamenu's shutdown button and add a restart button in `sidebar.js`:
+Replace Cinnamenu's built-in shutdown button and add a restart button. Open:
+
+```
+~/.local/share/cinnamon/applets/Cinnamenu@json/5.8/sidebar.js
+```
+
+Find the shutdown `SidebarButton` block and replace its callback:
 
 ```javascript
-// Find the shutdown SidebarButton and replace its callback:
-() => {
-    this.appThis.menu.close();
-    Util.spawnCommandLine('/home/YOUR_USER/bin/display-shutdown.sh');
-}
+// Before:
+this.appThis.sessionManager.ShutdownRemote();
 
-// Add immediately after (restart button):
+// After:
+Util.spawnCommandLine('/home/YOUR_USER/bin/display-shutdown.sh');
+```
+
+Add the restart button immediately after the shutdown block:
+
+```javascript
 this.items.push(new SidebarButton(
     this.appThis,
     newSidebarIcon('system-reboot'),
-    null, _('Restart'), _('Select display profile and restart'),
+    null,
+    _('Restart'),
+    _('Select display profile and restart'),
     () => {
         this.appThis.menu.close();
         Util.spawnCommandLine('/home/YOUR_USER/bin/display-restart.sh');
     }));
 ```
 
-Then reload: `cinnamon --replace &`
+Reload Cinnamon to apply:
+
+```bash
+cinnamon --replace &
+```
+
+---
 
 ## Scripts reference
 
@@ -133,3 +277,25 @@ Then reload: `cinnamon --replace &`
 | `display-restart.sh` | Prompt for next profile, save choice, reboot |
 | `display-work.sh` | Compatibility wrapper for `display-switch.sh work` |
 | `display-personal.sh` | Compatibility wrapper for `display-switch.sh personal` |
+
+---
+
+## Troubleshooting
+
+**Outputs not switching** — check the output names in your profile match what `xrandr` reports:
+```bash
+xrandr | grep " connected"
+display-setup.sh
+```
+
+**Panel layout not restoring** — confirm a `panel-layout.sh` exists in the profile directory and that your DE is detected correctly:
+```bash
+echo $XDG_CURRENT_DESKTOP
+ls ~/.config/display-profiles/<name>/
+```
+
+**Refresh rate reverting to 60Hz** — this is the Nvidia driver bug the scripts were built to address. The autostart entry re-applies the profile on every login. If it happens mid-session, run `display-switch.sh <profile>` again.
+
+**Zenity dialog not appearing at shutdown** — ensure `DISPLAY` is set. The scripts export `DISPLAY=:0` as a fallback, but if your display server is on a different display, update the export in `display-shutdown.sh` and `display-restart.sh`.
+
+**`display-switch.sh: command not found`** — `~/bin` is not in your PATH. Add it to `~/.bashrc` as described in the installation steps.
