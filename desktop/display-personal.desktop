@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Personal Displays
+Comment=Switch to personal display mode (DP-0 primary, DP-2 secondary, 165Hz)
+Exec=/home/jordan/bin/display-personal.sh
+Icon=video-joined-displays-symbolic
+Terminal=false
+Categories=Settings;HardwareSettings;
+Keywords=display;monitor;personal;screen;

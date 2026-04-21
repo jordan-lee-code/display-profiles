@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Work Displays
+Comment=Switch to work display mode (DP-2 only, 165Hz)
+Exec=/home/jordan/bin/display-work.sh
+Icon=video-single-display-symbolic
+Terminal=false
+Categories=Settings;HardwareSettings;
+Keywords=display;monitor;work;screen;

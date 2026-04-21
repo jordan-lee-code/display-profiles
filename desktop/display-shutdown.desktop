@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Shutdown
+Comment=Select display mode for next startup then shut down
+Exec=/home/jordan/bin/display-shutdown.sh
+Icon=system-shutdown
+Terminal=false
+Categories=Settings;HardwareSettings;
+Keywords=shutdown;display;monitor;power;
