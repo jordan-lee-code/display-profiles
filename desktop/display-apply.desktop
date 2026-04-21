@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Apply Saved Display Profile
+Exec=%%HOME%%/bin/display-apply-saved.sh
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
