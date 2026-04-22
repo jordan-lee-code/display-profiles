@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 # Snapshot the current DE panel layout into a named profile.
 # Usage: display-save-layout.sh <profile>
 #

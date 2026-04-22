@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 # Apply a named display profile.
 # Usage: display-switch.sh <profile>
 #
@@ -23,9 +24,19 @@ if [[ ! -d "$PROFILE_DIR" ]]; then
     exit 1
 fi
 
+require_cmd xrandr "Install with: sudo apt install x11-xserver-utils"
+
 echo "Applying profile: $PROFILE"
 
-bash "$PROFILE_DIR/xrandr.sh"
+if [[ ! -f "$PROFILE_DIR/xrandr.sh" ]]; then
+    echo "Profile '$PROFILE' is missing xrandr.sh — recreate it with display-new-profile.sh" >&2
+    exit 1
+fi
+if ! bash "$PROFILE_DIR/xrandr.sh"; then
+    log_error "xrandr failed for profile '$PROFILE'"
+    echo "xrandr failed for profile '$PROFILE'. See $(get_log_file) for details." >&2
+    exit 1
+fi
 
 if [[ -f "$PROFILE_DIR/panel-layout.sh" ]]; then
     echo "  Restoring panel layout..."

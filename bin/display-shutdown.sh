@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 # Prompt for a display profile, save the choice, then power off.
 #
 # DISPLAY and XAUTHORITY are exported explicitly because this script is

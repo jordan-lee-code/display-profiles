@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 # Interactive wizard to create a new named display profile.
 #
 # Walks through: profile name, enable/disable each output, resolution, refresh
@@ -9,10 +10,14 @@
 
 source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../lib/common.sh"
 
+require_cmd xrandr "Install with: sudo apt install x11-xserver-utils"
+
 # --- Profile name ---
 read -rp "Profile name: " PROFILE_NAME
+ORIGINAL_NAME="$PROFILE_NAME"
 PROFILE_NAME="${PROFILE_NAME// /-}"
 [[ -z "$PROFILE_NAME" ]] && { echo "Profile name required." >&2; exit 1; }
+[[ "$PROFILE_NAME" != "$ORIGINAL_NAME" ]] && echo "  Profile name saved as '$PROFILE_NAME'."
 
 PROFILE_DIR="$(get_profiles_dir)/$PROFILE_NAME"
 if [[ -d "$PROFILE_DIR" ]]; then
@@ -57,7 +62,7 @@ for OUTPUT in "${ALL_OUTPUTS[@]}"; do
 
     echo "  Available resolutions:"
     for i in "${!RESOLUTIONS[@]}"; do echo "    $((i+1)). ${RESOLUTIONS[$i]}"; done
-    read -rp "  Select [1]: " idx; idx="${idx:-1}"
+    pick_index idx "${#RESOLUTIONS[@]}" "  Select [1-${#RESOLUTIONS[@]}]: "
     SELECTED_RES="${RESOLUTIONS[$((idx-1))]}"
 
     # Split "WxH" into separate integers for later arithmetic.
@@ -78,7 +83,7 @@ for OUTPUT in "${ALL_OUTPUTS[@]}"; do
 
     echo "  Available refresh rates for $SELECTED_RES:"
     for i in "${!RATES[@]}"; do echo "    $((i+1)). ${RATES[$i]}Hz"; done
-    read -rp "  Select [1]: " idx; idx="${idx:-1}"
+    pick_index idx "${#RATES[@]}" "  Select [1-${#RATES[@]}]: "
     RATE[$OUTPUT]="${RATES[$((idx-1))]}"
 done
 
@@ -93,7 +98,7 @@ PRIMARY="${ENABLED_LIST[0]}"
 if [[ ${#ENABLED_LIST[@]} -gt 1 ]]; then
     echo "Select primary output:"
     for i in "${!ENABLED_LIST[@]}"; do echo "  $((i+1)). ${ENABLED_LIST[$i]}"; done
-    read -rp "  Primary [1]: " idx; idx="${idx:-1}"
+    pick_index idx "${#ENABLED_LIST[@]}" "  Primary [1-${#ENABLED_LIST[@]}]: "
     PRIMARY="${ENABLED_LIST[$((idx-1))]}"
 fi
 
@@ -191,7 +196,7 @@ for OUTPUT in "${ENABLED_LIST[@]}"; do
     for i in "${!OPT_LABELS[@]}"; do
         echo "  $((i+1)). ${OPT_LABELS[$i]}"
     done
-    read -rp "  Position [1]: " idx; idx="${idx:-1}"
+    pick_index idx "${#OPT_LABELS[@]}" "  Position [1-${#OPT_LABELS[@]}]: "
     chosen=$((idx - 1))
 
     POS_X[$OUTPUT]="${OPT_X[$chosen]}"
@@ -336,7 +341,7 @@ if [[ "${yn,,}" != "n" ]]; then
 Type=Application
 Name=${PROFILE_NAME^} Displays
 Comment=${DESC:-Switch to $PROFILE_NAME display profile}
-Exec=$HOME/bin/display-switch.sh $PROFILE_NAME
+Exec=$HOME/bin/display-switch.sh "$PROFILE_NAME"
 Icon=video-display-symbolic
 Terminal=false
 Categories=Settings;HardwareSettings;

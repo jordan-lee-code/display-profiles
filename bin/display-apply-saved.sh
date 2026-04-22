@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 # Apply the last saved display profile on login.
 # Called by the autostart desktop entry on every session start.
 #
@@ -10,7 +11,8 @@
 
 source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../lib/common.sh"
 
-PROFILE=$(cat "$HOME/.config/display-mode" 2>/dev/null)
+[[ -f "$HOME/.config/display-mode" ]] || exit 0
+PROFILE=$(< "$HOME/.config/display-mode")
 [[ -z "$PROFILE" ]] && exit 0
 
 exec "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/display-switch.sh" "$PROFILE"

@@ -187,6 +187,21 @@ Profile xrandr commands are plain bash in `~/.config/display-profiles/<name>/xra
 nano ~/.config/display-profiles/work/xrandr.sh
 ```
 
+The generated file looks like this:
+
+```bash
+#!/bin/bash
+xrandr \
+    --output DP-0 --mode 2560x1440 --rate 165.08 --pos 0x0 --primary \
+    --output DP-2 --mode 1920x1080 --rate 60.00 --pos 2560x180 \
+    --output HDMI-0 --off
+```
+
+Common things to change:
+- `--rate` — adjust the refresh rate (must be a rate listed by `xrandr` for that mode)
+- `--pos XxY` — move an output; `0x0` is top-left, `2560x0` puts it immediately right of a 2560-wide display
+- `--mode WxH` — change the resolution
+
 To regenerate from scratch, run `display-new-profile.sh` again with the same name and confirm the overwrite.
 
 ## Deleting a profile
@@ -237,7 +252,7 @@ Find the shutdown `SidebarButton` block and replace its callback:
 // Before:
 this.appThis.sessionManager.ShutdownRemote();
 
-// After:
+// After (replace YOUR_USER with your username, e.g. /home/jordan/bin/...):
 Util.spawnCommandLine('/home/YOUR_USER/bin/display-shutdown.sh');
 ```
 
@@ -252,7 +267,7 @@ this.items.push(new SidebarButton(
     _('Select display profile and restart'),
     () => {
         this.appThis.menu.close();
-        Util.spawnCommandLine('/home/YOUR_USER/bin/display-restart.sh');
+        Util.spawnCommandLine('/home/YOUR_USER/bin/display-restart.sh');  // replace YOUR_USER
     }));
 ```
 
@@ -297,6 +312,12 @@ ls ~/.config/display-profiles/<name>/
 **Zenity dialog not appearing at shutdown** — ensure `DISPLAY` is set. The scripts export `DISPLAY=:0` as a fallback, but if your display server is on a different display, update the export in `display-shutdown.sh` and `display-restart.sh`.
 
 **`display-switch.sh: command not found`** — `~/bin` is not in your PATH. Add it to `~/.bashrc` as described in the installation steps.
+
+**xrandr command failed** — if a profile applies partially or you see a generic error, check the debug log written by `display-switch.sh`:
+```bash
+cat ~/.config/display-profiles/debug.log
+```
+Common causes: output name mismatch (run `display-setup.sh` to verify), mode not supported by the driver, or monitor disconnected.
 
 ---
 

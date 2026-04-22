@@ -1,9 +1,12 @@
 #!/bin/bash
+set -euo pipefail
 # Show connected outputs with available resolutions and refresh rates,
 # and list any saved profiles. Useful for finding the exact output names
 # (DP-0, HDMI-1, etc.) needed when creating a new profile.
 
 source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../lib/common.sh"
+
+require_cmd xrandr "Install with: sudo apt install x11-xserver-utils"
 
 echo "Connected outputs:"
 echo ""

@@ -20,6 +20,11 @@ for f in "$REPO_DIR"/bin/display-*.sh; do
 done
 echo "  Scripts symlinked to ~/bin/"
 
+# Wire git hooks so the pre-push version bump hook is active for contributors.
+if git -C "$REPO_DIR" config core.hooksPath .githooks 2>/dev/null; then
+    echo "  Git hooks configured (.githooks/)"
+fi
+
 # Generate the autostart entry with the real HOME path substituted in.
 # Autostart files must use absolute paths — the desktop file spec does not
 # support ~ or $HOME in the Exec field.
