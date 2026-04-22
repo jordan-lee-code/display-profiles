@@ -19,6 +19,15 @@ _fail() { printf "  \033[31mFAIL\033[0m  %s\n" "$1"; ((FAIL++)) || true; }
 _skip() { printf "  \033[33mSKIP\033[0m  %s\n" "$1"; ((SKIP++)) || true; }
 section() { echo ""; echo "── $* ──────────────────────────────────────────"; }
 
+# setup_temp_home — create a disposable temp directory and redirect HOME to it.
+# Saves the original HOME in _REAL_HOME and sets TMP_H to the temp path.
+# Caller must call teardown_temp_home to restore HOME, then: rm -rf "$TMP_H"
+setup_temp_home() { TMP_H=$(mktemp -d); _REAL_HOME=$HOME; HOME=$TMP_H; }
+
+# teardown_temp_home — restore HOME to the value saved by setup_temp_home.
+# Does NOT delete TMP_H; caller is responsible for: rm -rf "$TMP_H"
+teardown_temp_home() { HOME=$_REAL_HOME; }
+
 HAVE_XRANDR=false
 command -v xrandr &>/dev/null && [[ -n "${DISPLAY:-}" ]] && HAVE_XRANDR=true
 
@@ -72,10 +81,9 @@ else
         || _fail "require_cmd: wrong error message: $err"
 fi
 
-TMP_H=$(mktemp -d)
-HOME_BAK=$HOME; HOME=$TMP_H
+setup_temp_home
 log_error "sentinel-12345"
-HOME=$HOME_BAK
+teardown_temp_home
 if [[ -f "$TMP_H/.config/display-profiles/debug.log" ]]; then
     content=$(cat "$TMP_H/.config/display-profiles/debug.log")
     [[ "$content" == *"sentinel-12345"* && "$content" == *"ERROR:"* ]] \
@@ -86,8 +94,7 @@ else
 fi
 rm -rf "$TMP_H"
 
-TMP_H=$(mktemp -d)
-HOME_BAK=$HOME; HOME=$TMP_H
+setup_temp_home
 result=$(list_profiles)
 [[ -z "$result" ]] \
     && _pass "list_profiles: no profiles dir → empty output" \
@@ -97,7 +104,7 @@ result=$(list_profiles)
 [[ "$result" == $'alpha\nbeta\ngamma' ]] \
     && _pass "list_profiles: returns profiles sorted alphabetically" \
     || _fail "list_profiles: expected alpha/beta/gamma, got: '$result'"
-HOME=$HOME_BAK
+teardown_temp_home
 rm -rf "$TMP_H"
 
 idx=0
@@ -212,10 +219,14 @@ if ! $HAVE_XRANDR; then
     _skip "round-trip: xrandr not available or DISPLAY not set"
 else
     XRANDR_OUT=$(xrandr 2>/dev/null)
-    # Active: connected with a current geometry (WxH+X+Y) in the header line.
-    # Off: connected but no geometry — treated as --off same as disconnected.
+
+    # Active outputs: connected AND have a current geometry (WxH+X+Y) in the header.
+    # The optional "primary " token is skipped with (primary )? in the pattern.
     mapfile -t ACTIVE < <(echo "$XRANDR_OUT" | awk \
         '/^[^ ]+ connected (primary )?[0-9]+x[0-9]+\+/{print $1}')
+
+    # Off outputs: connected but no geometry (not currently active), plus disconnected.
+    # Both classes get --off in the reconstructed xrandr command.
     mapfile -t OFF    < <(echo "$XRANDR_OUT" | awk \
         '/^[^ ]+ connected / && !/[0-9]+x[0-9]+\+[0-9]+\+[0-9]+/{print $1}
          / disconnected /{print $1}')
@@ -225,11 +236,13 @@ else
     else
         XRANDR_LINES="xrandr"
         for out in "${ACTIVE[@]}"; do
+            # Extract WxH from the mode line marked with * (current active mode).
             mode=$(echo "$XRANDR_OUT" | awk -v o="$out" '
                 $0 ~ "^"o" connected" { found=1; next }
                 found && /^[A-Z]/ { exit }
                 found && /\*/ { match($0, /[0-9]+x[0-9]+/); print substr($0,RSTART,RLENGTH); exit }
             ')
+            # Extract the refresh rate from the field containing * (strips * and + markers).
             rate=$(echo "$XRANDR_OUT" | awk -v o="$out" '
                 $0 ~ "^"o" connected" { found=1; next }
                 found && /^[A-Z]/ { exit }
@@ -237,6 +250,8 @@ else
                     for (i=1;i<=NF;i++) { if ($i ~ /\*/) { gsub(/[*+]/,"",$i); print $i; exit } }
                 }
             ')
+            # Extract X+Y position from the geometry field (WxH+X+Y) on the output header.
+            # split() on "+" gives [WxH, X, Y] at indices 1, 2, 3.
             pos=$(echo "$XRANDR_OUT" | awk -v o="$out" '
                 $0 ~ "^"o" connected" {
                     match($0, /[0-9]+x[0-9]+\+[0-9]+\+[0-9]+/)

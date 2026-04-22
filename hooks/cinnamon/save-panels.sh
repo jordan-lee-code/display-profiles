@@ -32,13 +32,28 @@ ACTIVE_MONITORS=$(xrandr 2>/dev/null \
 [[ "$ACTIVE_MONITORS" =~ ^[0-9]+$ ]] && (( ACTIVE_MONITORS > 0 )) \
     || ACTIVE_MONITORS=999
 
-# Parse a GLib array string ['a', 'b', 'c'] into one element per line.
-_glib_to_lines() {
+# glib_array_to_lines — convert a GLib variant array string to one element per line.
+#
+# Input  (arg $1): GLib string-array as printed by dconf read, e.g.:
+#   ['panel1:0:top', 'panel2:1:bottom']
+# Output (stdout): one unquoted element per line, e.g.:
+#   panel1:0:top
+#   panel2:1:bottom
+#
+# Steps: strip outer [ ] brackets → split on commas → trim leading spaces and
+#        surrounding single-quotes from each token.
+glib_array_to_lines() {
     sed "s/^\[//; s/\]$//" <<< "$1" | tr ',' '\n' | sed "s/^ *'//; s/' *$//"
 }
 
-# Read lines on stdin and emit a GLib array string.
-_lines_to_glib() {
+# lines_to_glib_array — convert stdin (one element per line) to a GLib array string.
+#
+# Input  (stdin): unquoted elements, one per line (blank lines are ignored).
+# Output (stdout): GLib string-array literal suitable for dconf write, e.g.:
+#   ['panel1:0:top', 'panel2:1:bottom']
+#
+# This is the exact inverse of glib_array_to_lines.
+lines_to_glib_array() {
     local first=true out="["
     while IFS= read -r line; do
         [[ -z "$line" ]] && continue
@@ -68,7 +83,7 @@ if [[ -n "$PANELS_RAW" ]]; then
             VALID_IDS+=("$panel_id")
             kept+=("$entry")
         fi
-    done < <(_glib_to_lines "$PANELS_RAW")
+    done < <(glib_array_to_lines "$PANELS_RAW")
 
     if [[ ${#kept[@]} -gt 0 ]]; then
         glib="["; first=true
@@ -88,10 +103,10 @@ _valid_panel() {
 for key in panels-height panels-autohide panels-hide-delay panels-show-delay; do
     val=$(dconf read /org/cinnamon/$key 2>/dev/null)
     [[ -z "$val" ]] && continue
-    filtered=$(_glib_to_lines "$val" | while IFS= read -r entry; do
+    filtered=$(glib_array_to_lines "$val" | while IFS= read -r entry; do
         [[ -z "$entry" ]] && continue
         _valid_panel "${entry%%:*}" && echo "$entry"
-    done | _lines_to_glib)
+    done | lines_to_glib_array)
     printf 'dconf write /org/cinnamon/%s "%s"\n' "$key" "$filtered" >> "$SAVE_FILE"
 done
 
@@ -99,11 +114,11 @@ done
 # Format: ['panelN:zone:slot:applet:id', ...]
 val=$(dconf read /org/cinnamon/enabled-applets 2>/dev/null)
 if [[ -n "$val" ]]; then
-    filtered=$(_glib_to_lines "$val" | while IFS= read -r entry; do
+    filtered=$(glib_array_to_lines "$val" | while IFS= read -r entry; do
         [[ -z "$entry" ]] && continue
         panel_part="${entry%%:*}"             # e.g. "panel1"
         _valid_panel "${panel_part#panel}" && echo "$entry"
-    done | _lines_to_glib)
+    done | lines_to_glib_array)
     printf 'dconf write /org/cinnamon/enabled-applets "%s"\n' "$filtered" >> "$SAVE_FILE"
 fi
 

@@ -18,7 +18,10 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     LATEST="${LATEST:-v0.0.0}"
 
     # Parse into components for arithmetic.
+    # Strip the leading "v" prefix (e.g. "v1.2.3" → "1.2.3").
     version="${LATEST#v}"
+    # %%.*  trims from the first dot to end (keeps major).
+    # #*.   trims up to and including the first dot (removes major. prefix).
     major="${version%%.*}"; rest="${version#*.}"
     minor="${rest%%.*}"; patch="${rest#*.}"
 
@@ -43,8 +46,11 @@ while read -r local_ref local_sha remote_ref remote_sha; do
 
     # Auto-generate release notes from commit messages since the last tag.
     # Falls back to the full log if this is the first tag.
+    # Cap release notes at this many commits to keep them concise.
+    RELEASE_NOTES_LIMIT=30
+
     if [[ "$LATEST" == "v0.0.0" ]]; then
-        NOTES=$(git log --pretty=format:"- %s" | head -30)
+        NOTES=$(git log --pretty=format:"- %s" | head -$RELEASE_NOTES_LIMIT)
     else
         NOTES=$(git log "${LATEST}..HEAD" --pretty=format:"- %s")
     fi
@@ -57,9 +63,12 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     echo "Creating release $NEW_VER..."
 
     # Create an annotated tag locally, push it, then publish the release.
-    git tag -a "$NEW_VER" -m "$NEW_VER"
-    git push origin "$NEW_VER"
-    gh release create "$NEW_VER" --title "$NEW_VER" --notes "$NOTES"
+    git tag -a "$NEW_VER" -m "$NEW_VER" \
+        || { echo "Error: failed to create tag $NEW_VER." >&2; exit 1; }
+    git push origin "$NEW_VER" \
+        || { echo "Error: failed to push tag $NEW_VER." >&2; exit 1; }
+    gh release create "$NEW_VER" --title "$NEW_VER" --notes "$NOTES" \
+        || { echo "Error: gh release create failed for $NEW_VER." >&2; exit 1; }
 
     echo "Release $NEW_VER published."
 done

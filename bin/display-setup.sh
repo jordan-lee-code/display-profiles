@@ -16,7 +16,17 @@ echo ""
 # with an uppercase letter, which is how xrandr marks new output blocks.
 # The * marker on a rate indicates the current mode; + indicates the preferred
 # mode reported by the monitor's EDID.
+#
+# Regex ^[A-Z].*[[:space:]]connected[[:space:]] matches xrandr output-header
+# lines for connected monitors. The leading [A-Z] avoids matching indented
+# mode lines; the trailing [[:space:]] avoids partial-word matches.
+#
+# RSTART / RLENGTH are awk built-ins set by match(): RSTART is the 1-based
+# start position of the match (0 if none), RLENGTH is its length. Used here
+# to extract just the WxH portion from a WxH+X+Y geometry string on the
+# output-header line.
 xrandr | awk '
+# ── Connected output header line ─────────────────────────────────────────
 /^[A-Z].*[[:space:]]connected[[:space:]]/ {
     output = $1
     primary = ($0 ~ /primary/) ? " (primary)" : ""
@@ -26,8 +36,10 @@ xrandr | awk '
     in_output = 1
     next
 }
+# ── Any upper-case line that is not "connected" → end the current block ──
 /^[A-Z].*[[:space:]]disconnected/ { in_output = 0; next }
 /^[A-Z]/ { in_output = 0; next }
+# ── Mode / refresh-rate line inside a connected block ────────────────────
 in_output && /^[[:space:]]+[0-9]+x[0-9]+/ {
     res = $1
     rates = ""
