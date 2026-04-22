@@ -321,6 +321,16 @@ Common causes: output name mismatch (run `display-setup.sh` to verify), mode not
 
 ---
 
+## Running the tests
+
+```bash
+bash tests/validate.sh
+```
+
+Covers bash syntax across all scripts, unit tests for every `lib/common.sh` function, error-path behaviour for each script, and a live round-trip display switch (re-applies the current config via xrandr). Sections that require a running X session are skipped automatically when `DISPLAY` is not set.
+
+---
+
 ## Contributing
 
 PRs welcome. The most useful additions are DE hooks — if you add support for GNOME, XFCE, or another desktop, the `hooks/<de>/` pattern is all it takes. See the DE support section above.
