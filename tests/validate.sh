@@ -212,14 +212,19 @@ if ! $HAVE_XRANDR; then
     _skip "round-trip: xrandr not available or DISPLAY not set"
 else
     XRANDR_OUT=$(xrandr 2>/dev/null)
-    mapfile -t CONNECTED    < <(echo "$XRANDR_OUT" | awk '/ connected /{print $1}')
-    mapfile -t DISCONNECTED < <(echo "$XRANDR_OUT" | awk '/ disconnected /{print $1}')
+    # Active: connected with a current geometry (WxH+X+Y) in the header line.
+    # Off: connected but no geometry — treated as --off same as disconnected.
+    mapfile -t ACTIVE < <(echo "$XRANDR_OUT" | awk \
+        '/^[^ ]+ connected (primary )?[0-9]+x[0-9]+\+/{print $1}')
+    mapfile -t OFF    < <(echo "$XRANDR_OUT" | awk \
+        '/^[^ ]+ connected / && !/[0-9]+x[0-9]+\+[0-9]+\+[0-9]+/{print $1}
+         / disconnected /{print $1}')
 
-    if [[ ${#CONNECTED[@]} -eq 0 ]]; then
-        _skip "round-trip: no connected outputs found"
+    if [[ ${#ACTIVE[@]} -eq 0 ]]; then
+        _skip "round-trip: no active outputs found"
     else
         XRANDR_LINES="xrandr"
-        for out in "${CONNECTED[@]}"; do
+        for out in "${ACTIVE[@]}"; do
             mode=$(echo "$XRANDR_OUT" | awk -v o="$out" '
                 $0 ~ "^"o" connected" { found=1; next }
                 found && /^[A-Z]/ { exit }
@@ -243,7 +248,7 @@ else
             XRANDR_LINES+=" \\
     --output $out --mode $mode --rate $rate --pos $pos$primary_flag"
         done
-        for out in "${DISCONNECTED[@]}"; do
+        for out in "${OFF[@]}"; do
             XRANDR_LINES+=" \\
     --output $out --off"
         done
