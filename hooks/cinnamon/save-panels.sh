@@ -74,7 +74,7 @@ if [[ -n "$PANELS_RAW" ]]; then
         glib="["; first=true
         for e in "${kept[@]}"; do $first || glib+=", "; glib+="'$e'"; first=false; done
         glib+="]"
-        echo "dconf write /org/cinnamon/panels-enabled '$glib'" >> "$SAVE_FILE"
+        printf 'dconf write /org/cinnamon/panels-enabled "%s"\n' "$glib" >> "$SAVE_FILE"
     fi
 fi
 
@@ -92,7 +92,7 @@ for key in panels-height panels-autohide panels-hide-delay panels-show-delay; do
         [[ -z "$entry" ]] && continue
         _valid_panel "${entry%%:*}" && echo "$entry"
     done | _lines_to_glib)
-    echo "dconf write /org/cinnamon/$key '$filtered'" >> "$SAVE_FILE"
+    printf 'dconf write /org/cinnamon/%s "%s"\n' "$key" "$filtered" >> "$SAVE_FILE"
 done
 
 # ── enabled-applets ───────────────────────────────────────────────────────────
@@ -104,11 +104,11 @@ if [[ -n "$val" ]]; then
         panel_part="${entry%%:*}"             # e.g. "panel1"
         _valid_panel "${panel_part#panel}" && echo "$entry"
     done | _lines_to_glib)
-    echo "dconf write /org/cinnamon/enabled-applets '$filtered'" >> "$SAVE_FILE"
+    printf 'dconf write /org/cinnamon/enabled-applets "%s"\n' "$filtered" >> "$SAVE_FILE"
 fi
 
 # ── next-applet-id ────────────────────────────────────────────────────────────
 val=$(dconf read /org/cinnamon/next-applet-id 2>/dev/null)
-[[ -n "$val" ]] && echo "dconf write /org/cinnamon/next-applet-id '$val'" >> "$SAVE_FILE"
+[[ -n "$val" ]] && printf 'dconf write /org/cinnamon/next-applet-id %s\n' "$val" >> "$SAVE_FILE"
 
 chmod +x "$SAVE_FILE"
