@@ -39,11 +39,13 @@ from pathlib import Path
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
-PROFILES_DIR  = Path.home() / ".config" / "display-profiles"
-DISPLAY_MODE  = Path.home() / ".config" / "display-mode"
-REPO_DIR      = Path(__file__).resolve().parent.parent
-BIN_DIR       = REPO_DIR / "bin"
-HOOKS_DIR     = REPO_DIR / "hooks"
+PROFILES_DIR       = Path.home() / ".config" / "display-profiles"
+DISPLAY_MODE       = Path.home() / ".config" / "display-mode"
+AUTOSTART_FILE     = Path.home() / ".config" / "autostart" / "display-apply.desktop"
+REPO_DIR           = Path(__file__).resolve().parent.parent
+BIN_DIR            = REPO_DIR / "bin"
+HOOKS_DIR          = REPO_DIR / "hooks"
+AUTOSTART_TEMPLATE = REPO_DIR / "desktop" / "display-apply.desktop"
 
 # ── xrandr parsing ────────────────────────────────────────────────────────────
 
@@ -124,6 +126,36 @@ def active_profile():
         return DISPLAY_MODE.read_text().strip() or None
     except FileNotFoundError:
         return None
+
+
+def autostart_enabled():
+    """Return True if the display-apply autostart entry is present and enabled."""
+    if not AUTOSTART_FILE.exists():
+        return False
+    return "X-GNOME-Autostart-enabled=true" in AUTOSTART_FILE.read_text()
+
+
+def set_autostart(enabled):
+    """Enable or disable the display-apply autostart entry.
+
+    Creates the desktop file from the repo template if it does not exist yet.
+    Toggles X-GNOME-Autostart-enabled rather than deleting the file so the
+    user's Exec path is preserved across enable/disable cycles.
+    """
+    if not AUTOSTART_FILE.exists():
+        template = AUTOSTART_TEMPLATE.read_text().replace(
+            "%%HOME%%", str(Path.home()))
+        AUTOSTART_FILE.parent.mkdir(parents=True, exist_ok=True)
+        AUTOSTART_FILE.write_text(template)
+
+    text = AUTOSTART_FILE.read_text()
+    if enabled:
+        text = text.replace("X-GNOME-Autostart-enabled=false",
+                            "X-GNOME-Autostart-enabled=true")
+    else:
+        text = text.replace("X-GNOME-Autostart-enabled=true",
+                            "X-GNOME-Autostart-enabled=false")
+    AUTOSTART_FILE.write_text(text)
 
 
 def switch_profile(name, parent=None):
@@ -629,6 +661,21 @@ class TrayApp:
 
         self._menu.append(Gtk.SeparatorMenuItem())
 
+        # "Apply on login" toggle — enables/disables the autostart entry.
+        # A greyed-out label beneath it shows which profile will be restored.
+        autostart_item = Gtk.CheckMenuItem(label="Apply on login")
+        autostart_item.set_active(autostart_enabled())
+        autostart_item.connect("toggled", self._on_autostart_toggled)
+        self._menu.append(autostart_item)
+
+        restore_name = active_profile()
+        restore_lbl  = Gtk.MenuItem(
+            label=f"    restores: {restore_name}" if restore_name else "    (no profile saved yet)")
+        restore_lbl.set_sensitive(False)
+        self._menu.append(restore_lbl)
+
+        self._menu.append(Gtk.SeparatorMenuItem())
+
         new_item = Gtk.MenuItem(label="New profile…")
         new_item.connect("activate", self._on_new_profile)
         self._menu.append(new_item)
@@ -644,6 +691,10 @@ class TrayApp:
 
     def _on_switch(self, _item, name):
         switch_profile(name)
+        GLib.idle_add(self._rebuild_menu)
+
+    def _on_autostart_toggled(self, item):
+        set_autostart(item.get_active())
         GLib.idle_add(self._rebuild_menu)
 
     def _on_new_profile(self, _item):
