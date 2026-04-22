@@ -39,13 +39,16 @@ from pathlib import Path
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
-PROFILES_DIR       = Path.home() / ".config" / "display-profiles"
-DISPLAY_MODE       = Path.home() / ".config" / "display-mode"
-AUTOSTART_FILE     = Path.home() / ".config" / "autostart" / "display-apply.desktop"
-REPO_DIR           = Path(__file__).resolve().parent.parent
-BIN_DIR            = REPO_DIR / "bin"
-HOOKS_DIR          = REPO_DIR / "hooks"
-AUTOSTART_TEMPLATE = REPO_DIR / "desktop" / "display-apply.desktop"
+PROFILES_DIR        = Path.home() / ".config" / "display-profiles"
+DISPLAY_MODE        = Path.home() / ".config" / "display-mode"
+AUTOSTART_DIR       = Path.home() / ".config" / "autostart"
+AUTOSTART_FILE      = AUTOSTART_DIR / "display-apply.desktop"
+TRAY_AUTOSTART_FILE = AUTOSTART_DIR / "display-profiles-tray.desktop"
+REPO_DIR            = Path(__file__).resolve().parent.parent
+BIN_DIR             = REPO_DIR / "bin"
+HOOKS_DIR           = REPO_DIR / "hooks"
+AUTOSTART_TEMPLATE  = REPO_DIR / "desktop" / "display-apply.desktop"
+TRAY_SCRIPT         = Path(__file__).resolve()
 
 # ── xrandr parsing ────────────────────────────────────────────────────────────
 
@@ -156,6 +159,36 @@ def set_autostart(enabled):
         text = text.replace("X-GNOME-Autostart-enabled=true",
                             "X-GNOME-Autostart-enabled=false")
     AUTOSTART_FILE.write_text(text)
+
+
+def tray_autostart_enabled():
+    """Return True if the tray applet has an enabled autostart entry."""
+    if not TRAY_AUTOSTART_FILE.exists():
+        return False
+    return "X-GNOME-Autostart-enabled=true" in TRAY_AUTOSTART_FILE.read_text()
+
+
+def set_tray_autostart(enabled):
+    """Add or remove the tray applet from startup applications.
+
+    Writes (or updates) ~/.config/autostart/display-profiles-tray.desktop.
+    The Exec line uses the absolute path to this script so it works regardless
+    of where the repo lives.
+    """
+    if enabled:
+        AUTOSTART_DIR.mkdir(parents=True, exist_ok=True)
+        TRAY_AUTOSTART_FILE.write_text(
+            "[Desktop Entry]\n"
+            "Type=Application\n"
+            "Name=Display Profiles Tray\n"
+            "Comment=System tray applet for managing display profiles\n"
+            f"Exec=python3 {TRAY_SCRIPT}\n"
+            "Icon=video-display-symbolic\n"
+            "NoDisplay=true\n"
+            "X-GNOME-Autostart-enabled=true\n"
+        )
+    else:
+        TRAY_AUTOSTART_FILE.unlink(missing_ok=True)
 
 
 def switch_profile(name, parent=None):
@@ -661,9 +694,13 @@ class TrayApp:
 
         self._menu.append(Gtk.SeparatorMenuItem())
 
-        # "Apply on login" toggle — enables/disables the autostart entry.
-        # A greyed-out label beneath it shows which profile will be restored.
-        autostart_item = Gtk.CheckMenuItem(label="Apply on login")
+        # Startup / login behaviour toggles.
+        tray_item = Gtk.CheckMenuItem(label="Launch tray on login")
+        tray_item.set_active(tray_autostart_enabled())
+        tray_item.connect("toggled", self._on_tray_autostart_toggled)
+        self._menu.append(tray_item)
+
+        autostart_item = Gtk.CheckMenuItem(label="Apply profile on login")
         autostart_item.set_active(autostart_enabled())
         autostart_item.connect("toggled", self._on_autostart_toggled)
         self._menu.append(autostart_item)
@@ -692,6 +729,9 @@ class TrayApp:
     def _on_switch(self, _item, name):
         switch_profile(name)
         GLib.idle_add(self._rebuild_menu)
+
+    def _on_tray_autostart_toggled(self, item):
+        set_tray_autostart(item.get_active())
 
     def _on_autostart_toggled(self, item):
         set_autostart(item.get_active())
