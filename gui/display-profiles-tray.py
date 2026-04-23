@@ -295,6 +295,10 @@ def write_profile(name, outputs, primary, placements, desc=""):
     if hook.exists():
         subprocess.run(["bash", str(hook), str(profile_dir)], capture_output=True)
 
+    monitors_hook = HOOKS_DIR / de / "save-monitors.sh"
+    if monitors_hook.exists():
+        subprocess.run(["bash", str(monitors_hook), str(profile_dir)], capture_output=True)
+
 
 # ── Profile creation wizard ────────────────────────────────────────────────────
 

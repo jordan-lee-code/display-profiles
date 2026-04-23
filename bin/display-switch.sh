@@ -43,10 +43,17 @@ if [[ -f "$PROFILE_DIR/panel-layout.sh" ]]; then
     bash "$PROFILE_DIR/panel-layout.sh"
 
     DE=$(detect_de)
+
+    # Overwrite the DE's stored monitor layout before restarting so it applies
+    # the profile's config rather than re-enabling all connected outputs.
+    if [[ -f "$PROFILE_DIR/cinnamon-monitors.xml" ]]; then
+        cp "$PROFILE_DIR/cinnamon-monitors.xml" "$HOME/.config/cinnamon-monitors.xml"
+    fi
+
     RESTART_HOOK="$(get_hooks_dir)/$DE/restart-de.sh"
     if [[ -f "$RESTART_HOOK" ]]; then
         echo "  Restarting $DE..."
-        bash "$RESTART_HOOK"
+        bash "$RESTART_HOOK" "$PROFILE_DIR"
     fi
 fi
 
