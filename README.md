@@ -22,13 +22,12 @@ Built to work around the Nvidia driver bug that drops refresh rate and forgets d
 | Package | Purpose | Required |
 |---------|---------|----------|
 | `x11-xserver-utils` | Provides `xrandr` | Yes |
-| `zenity` | GTK dialog for shutdown/restart prompts | No — falls back to terminal `select` |
 | `dconf-tools` | Panel layout save/restore | Cinnamon only |
 
 Install on Debian/Ubuntu/Mint:
 
 ```bash
-sudo apt install x11-xserver-utils zenity dconf-tools
+sudo apt install x11-xserver-utils dconf-tools
 ```
 
 ---
@@ -50,7 +49,6 @@ bash install.sh
 
 This will:
 - Symlink all `bin/display-*.sh` scripts into `~/bin/` (edits to the repo take effect immediately)
-- Generate and install `display-shutdown.desktop` into `~/.local/share/applications/`
 - Generate and install `display-apply.desktop` into `~/.config/autostart/` (applies saved profile on every login)
 
 ### 3. Add `~/bin` to your PATH
@@ -160,12 +158,6 @@ display-switch.sh <profile>
 
 Or use the start menu shortcuts created during `display-new-profile.sh`.
 
-### Shutdown and restart
-
-`display-shutdown.sh` and `display-restart.sh` show a profile selection dialog before acting — Zenity radiolist if a display is available, terminal `select` menu otherwise. Every profile in `~/.config/display-profiles/` appears automatically.
-
-Use the **Shutdown** entry added to the application menu by `install.sh`, or call the scripts directly.
-
 ### Profile applied on login
 
 On every login, `display-apply-saved.sh` reads `~/.config/display-mode` and switches to whichever profile is recorded there. That file is updated whenever you switch profiles, pick one at shutdown/restart, or use **Profile for next login** in the tray applet — which lets you pre-select a different layout for the next login without changing your current display.
@@ -248,8 +240,6 @@ The DE is detected from `$XDG_CURRENT_DESKTOP`. Supported values: `cinnamon`, `g
 | `display-switch.sh <name>` | Apply a profile (xrandr + panel layout + DE restart if needed) |
 | `display-save-layout.sh <name>` | Snapshot current DE panel config into a profile |
 | `display-apply-saved.sh` | Apply the last saved profile (used by autostart) |
-| `display-shutdown.sh` | Prompt for next profile, save choice, power off |
-| `display-restart.sh` | Prompt for next profile, save choice, reboot |
 
 ---
 
@@ -283,8 +273,7 @@ python3 gui/display-profiles-tray.py
 
 1. `~/.config/display-mode` holds a single line: the name of the profile to apply at login
 2. `display-switch.sh` updates this file every time you switch profiles
-3. `display-shutdown.sh` / `display-restart.sh` update it when you pick a profile at shutdown
-4. "Profile for next login" updates it without switching anything — useful when you want to log out and come back in a different layout
+3. "Profile for next login" in the tray updates it without switching anything — useful when you want to log out and come back in a different layout
 5. On login, `display-apply-saved.sh` reads the file and calls `display-switch.sh` with that name
 
 ---
@@ -304,8 +293,6 @@ ls ~/.config/display-profiles/<name>/
 ```
 
 **Refresh rate reverting to 60Hz** — this is the Nvidia driver bug the scripts were built to address. The autostart entry re-applies the profile on every login. If it happens mid-session, run `display-switch.sh <profile>` again.
-
-**Zenity dialog not appearing at shutdown** — ensure `DISPLAY` is set. The scripts export `DISPLAY=:0` as a fallback, but if your display server is on a different display, update the export in `display-shutdown.sh` and `display-restart.sh`.
 
 **`display-switch.sh: command not found`** — `~/bin` is not in your PATH. Add it to `~/.bashrc` as described in the installation steps.
 

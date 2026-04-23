@@ -57,7 +57,6 @@ if [[ -f "$PROFILE_DIR/panel-layout.sh" ]]; then
     fi
 fi
 
-# Write the active profile name so display-apply-saved.sh can restore it on
-# the next login, and so display-shutdown.sh knows the current state.
+# Write the active profile name so display-apply-saved.sh can restore it on login.
 echo "$PROFILE" > "$HOME/.config/display-mode"
 echo "Done."

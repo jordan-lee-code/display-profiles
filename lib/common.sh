@@ -64,45 +64,6 @@ list_profiles() {
     find "$dir" -maxdepth 1 -mindepth 1 -type d -exec basename {} \; | sort
 }
 
-# Show a profile selection dialog and print the chosen name to stdout.
-# Uses a Zenity radiolist when a display is available, falling back to a
-# terminal select menu when running without X (e.g. from a bare terminal or
-# via SSH). Returns 1 if the user cancels or no profiles exist.
-select_profile() {
-    local title="${1:-Select display profile}"
-    local prompt="${2:-Select display profile for next startup:}"
-    mapfile -t profiles < <(list_profiles)
-
-    if [[ ${#profiles[@]} -eq 0 ]]; then
-        echo "No profiles found. Run display-new-profile.sh to create one." >&2
-        return 1
-    fi
-
-    if command -v zenity &>/dev/null && [[ -n "${DISPLAY:-}" ]]; then
-        # Build the zenity argument list: TRUE/FALSE toggles precede each
-        # profile name. The first profile is pre-selected.
-        local zenity_args=()
-        local first=true
-        for p in "${profiles[@]}"; do
-            $first && zenity_args+=(TRUE) || zenity_args+=(FALSE)
-            zenity_args+=("$p")
-            first=false
-        done
-        zenity --list \
-            --title="$title" \
-            --text="$prompt" \
-            --radiolist \
-            --column="" --column="Profile" \
-            "${zenity_args[@]}" 2>/dev/null || return 1
-    else
-        echo "$prompt" >&2
-        select p in "${profiles[@]}"; do
-            [[ -n "$p" ]] && { echo "$p"; return 0; }
-        done
-        return 1
-    fi
-}
-
 # Appends a timestamped error message to the debug log.
 log_error() {
     local msg="$1"
