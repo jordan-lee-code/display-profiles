@@ -13,6 +13,7 @@ Built to work around the Nvidia driver bug that drops refresh rate and forgets d
 - Prompts for the next profile at shutdown and restart via a Zenity dialog or terminal menu
 - Applies the saved profile automatically on login via autostart
 - Interactive wizard to create new profiles with output discovery
+- GTK3 system tray applet for point-and-click switching and profile management
 
 ---
 
@@ -290,6 +291,42 @@ cinnamon --replace &
 | `display-apply-saved.sh` | Apply the last saved profile (used by autostart) |
 | `display-shutdown.sh` | Prompt for next profile, save choice, power off |
 | `display-restart.sh` | Prompt for next profile, save choice, reboot |
+
+---
+
+## System tray applet
+
+`gui/display-profiles-tray.py` is a GTK3 system tray applet that gives you a point-and-click interface for everything in the scripts.
+
+**Requirements:** `python3-gi`, plus either `gir1.2-ayatanaappindicator3-0.1` (recommended) or `gir1.2-appindicator3-0.1`:
+
+```bash
+sudo apt install python3-gi gir1.2-ayatanaappindicator3-0.1
+```
+
+**Run it:**
+
+```bash
+python3 gui/display-profiles-tray.py
+```
+
+**Menu reference:**
+
+| Entry | What it does |
+|-------|-------------|
+| Profile names (top section) | Switch to that profile immediately — same as `display-switch.sh <name>` |
+| **Launch tray on login** | Adds/removes an XDG autostart entry so the tray starts with your session |
+| **Auto-apply profile on login** | Adds/removes an XDG autostart entry that runs `display-apply-saved.sh` on every login. When enabled, whatever profile is recorded in `~/.config/display-mode` will be applied automatically after you log in |
+| **Profile for next login** | Submenu — select a profile to record in `~/.config/display-mode` *without* switching your current display. Greyed out when auto-apply is off. Use this to pre-select a different profile before you log out |
+| **New profile…** | Opens the profile creation wizard |
+
+**How auto-apply works end-to-end:**
+
+1. `~/.config/display-mode` holds a single line: the name of the profile to apply at login
+2. `display-switch.sh` updates this file every time you switch profiles
+3. `display-shutdown.sh` / `display-restart.sh` update it when you pick a profile at shutdown
+4. "Profile for next login" updates it without switching anything — useful when you want to log out and come back in a different layout
+5. On login, `display-apply-saved.sh` reads the file and calls `display-switch.sh` with that name
 
 ---
 
