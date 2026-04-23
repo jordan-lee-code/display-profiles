@@ -239,47 +239,6 @@ The DE is detected from `$XDG_CURRENT_DESKTOP`. Supported values: `cinnamon`, `g
 
 ---
 
-## Cinnamenu integration (optional)
-
-Replace Cinnamenu's built-in shutdown button and add a restart button. Open:
-
-```
-~/.local/share/cinnamon/applets/Cinnamenu@json/5.8/sidebar.js
-```
-
-Find the shutdown `SidebarButton` block and replace its callback:
-
-```javascript
-// Before:
-this.appThis.sessionManager.ShutdownRemote();
-
-// After (replace YOUR_USER with your username, e.g. /home/jordan/bin/...):
-Util.spawnCommandLine('/home/YOUR_USER/bin/display-shutdown.sh');
-```
-
-Add the restart button immediately after the shutdown block:
-
-```javascript
-this.items.push(new SidebarButton(
-    this.appThis,
-    newSidebarIcon('system-reboot'),
-    null,
-    _('Restart'),
-    _('Select display profile and restart'),
-    () => {
-        this.appThis.menu.close();
-        Util.spawnCommandLine('/home/YOUR_USER/bin/display-restart.sh');  // replace YOUR_USER
-    }));
-```
-
-Reload Cinnamon to apply:
-
-```bash
-cinnamon --replace &
-```
-
----
-
 ## Scripts reference
 
 | Script | What it does |
