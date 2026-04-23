@@ -10,7 +10,6 @@ Built to work around the Nvidia driver bug that drops refresh rate and forgets d
 
 - Applies `xrandr` config (outputs, resolution, refresh rate, positions, primary)
 - Saves and restores DE panel layouts per profile (Cinnamon supported; hooks for others)
-- Prompts for the next profile at shutdown and restart via a Zenity dialog or terminal menu
 - Applies the saved profile automatically on login via autostart
 - Interactive wizard to create new profiles with output discovery
 - GTK3 system tray applet for point-and-click switching and profile management
@@ -48,6 +47,7 @@ bash install.sh
 ```
 
 This will:
+
 - Symlink all `bin/display-*.sh` scripts into `~/bin/` (edits to the repo take effect immediately)
 - Generate and install `display-apply.desktop` into `~/.config/autostart/` (applies saved profile on every login)
 
@@ -160,7 +160,7 @@ Or use the start menu shortcuts created during `display-new-profile.sh`.
 
 ### Profile applied on login
 
-On every login, `display-apply-saved.sh` reads `~/.config/display-mode` and switches to whichever profile is recorded there. That file is updated whenever you switch profiles, pick one at shutdown/restart, or use **Profile for next login** in the tray applet — which lets you pre-select a different layout for the next login without changing your current display.
+On every login, `display-apply-saved.sh` reads `~/.config/display-mode` and switches to whichever profile is recorded there. That file is updated whenever you switch profiles, or when you use **Profile for next login** in the tray applet to pre-select a different layout for the next login without changing your current display.
 
 ---
 
@@ -170,7 +170,7 @@ On every login, `display-apply-saved.sh` reads `~/.config/display-mode` and swit
 display-new-profile.sh
 ```
 
-New profiles appear in the shutdown/restart dialog automatically.
+New profiles appear in the tray applet automatically.
 
 ## Editing a profile
 
@@ -191,6 +191,7 @@ xrandr \
 ```
 
 Common things to change:
+
 - `--rate` — adjust the refresh rate (must be a rate listed by `xrandr` for that mode)
 - `--pos XxY` — move an output; `0x0` is top-left, `2560x0` puts it immediately right of a 2560-wide display
 - `--mode WxH` — change the resolution
@@ -274,19 +275,21 @@ python3 gui/display-profiles-tray.py
 1. `~/.config/display-mode` holds a single line: the name of the profile to apply at login
 2. `display-switch.sh` updates this file every time you switch profiles
 3. "Profile for next login" in the tray updates it without switching anything — useful when you want to log out and come back in a different layout
-5. On login, `display-apply-saved.sh` reads the file and calls `display-switch.sh` with that name
+4. On login, `display-apply-saved.sh` reads the file and calls `display-switch.sh` with that name
 
 ---
 
 ## Troubleshooting
 
 **Outputs not switching** — check the output names in your profile match what `xrandr` reports:
+
 ```bash
 xrandr | grep " connected"
 display-setup.sh
 ```
 
 **Panel layout not restoring** — confirm a `panel-layout.sh` exists in the profile directory and that your DE is detected correctly:
+
 ```bash
 echo $XDG_CURRENT_DESKTOP
 ls ~/.config/display-profiles/<name>/
@@ -297,9 +300,11 @@ ls ~/.config/display-profiles/<name>/
 **`display-switch.sh: command not found`** — `~/bin` is not in your PATH. Add it to `~/.bashrc` as described in the installation steps.
 
 **xrandr command failed** — if a profile applies partially or you see a generic error, check the debug log written by `display-switch.sh`:
+
 ```bash
 cat ~/.config/display-profiles/debug.log
 ```
+
 Common causes: output name mismatch (run `display-setup.sh` to verify), mode not supported by the driver, or monitor disconnected.
 
 ---
