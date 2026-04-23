@@ -704,16 +704,28 @@ class TrayApp:
         tray_item.connect("toggled", self._on_tray_autostart_toggled)
         self._menu.append(tray_item)
 
-        autostart_item = Gtk.CheckMenuItem(label="Apply profile on login")
-        autostart_item.set_active(autostart_enabled())
+        autostart_enabled_ = autostart_enabled()
+        autostart_item = Gtk.CheckMenuItem(label="Auto-apply profile on login")
+        autostart_item.set_active(autostart_enabled_)
         autostart_item.connect("toggled", self._on_autostart_toggled)
         self._menu.append(autostart_item)
 
-        restore_name = active_profile()
-        restore_lbl  = Gtk.MenuItem(
-            label=f"    restores: {restore_name}" if restore_name else "    (no profile saved yet)")
-        restore_lbl.set_sensitive(False)
-        self._menu.append(restore_lbl)
+        # Submenu: choose which profile is applied on the next login without
+        # switching the current display. Greyed out when auto-apply is off.
+        next_item = Gtk.MenuItem(label="Profile for next login")
+        next_item.set_sensitive(autostart_enabled_ and bool(profiles))
+        if profiles:
+            saved = active_profile()
+            next_menu = Gtk.Menu()
+            group = []
+            for name in profiles:
+                radio = Gtk.RadioMenuItem.new_with_label(group, name)
+                group = radio.get_group()
+                radio.set_active(name == saved)
+                radio.connect("toggled", self._on_set_next_login, name)
+                next_menu.append(radio)
+            next_item.set_submenu(next_menu)
+        self._menu.append(next_item)
 
         self._menu.append(Gtk.SeparatorMenuItem())
 
@@ -740,6 +752,11 @@ class TrayApp:
     def _on_autostart_toggled(self, item):
         set_autostart(item.get_active())
         GLib.idle_add(self._rebuild_menu)
+
+    def _on_set_next_login(self, item, name):
+        if item.get_active():
+            DISPLAY_MODE.parent.mkdir(parents=True, exist_ok=True)
+            DISPLAY_MODE.write_text(name + "\n")
 
     def _on_new_profile(self, _item):
         if self._wizard is not None:

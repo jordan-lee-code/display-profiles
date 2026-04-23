@@ -33,13 +33,6 @@ sed "s|%%HOME%%|$HOME|g" "$REPO_DIR/desktop/display-apply.desktop" \
     > "$HOME/.config/autostart/display-apply.desktop"
 echo "  Autostart entry installed to ~/.config/autostart/"
 
-# Generate the shutdown launcher the same way.
-mkdir -p "$HOME/.local/share/applications"
-sed "s|%%HOME%%|$HOME|g" "$REPO_DIR/desktop/display-shutdown.desktop" \
-    > "$HOME/.local/share/applications/display-shutdown.desktop"
-update-desktop-database "$HOME/.local/share/applications/" 2>/dev/null || true
-echo "  Shutdown launcher installed to ~/.local/share/applications/"
-
 # First-run hint if no profiles exist yet.
 PROFILES_DIR="$HOME/.config/display-profiles"
 if [[ ! -d "$PROFILES_DIR" ]] || [[ -z "$(ls -A "$PROFILES_DIR" 2>/dev/null)" ]]; then

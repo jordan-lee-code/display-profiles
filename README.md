@@ -10,9 +10,9 @@ Built to work around the Nvidia driver bug that drops refresh rate and forgets d
 
 - Applies `xrandr` config (outputs, resolution, refresh rate, positions, primary)
 - Saves and restores DE panel layouts per profile (Cinnamon supported; hooks for others)
-- Prompts for the next profile at shutdown and restart via a Zenity dialog or terminal menu
 - Applies the saved profile automatically on login via autostart
 - Interactive wizard to create new profiles with output discovery
+- GTK3 system tray applet for point-and-click switching and profile management
 
 ---
 
@@ -21,13 +21,12 @@ Built to work around the Nvidia driver bug that drops refresh rate and forgets d
 | Package | Purpose | Required |
 |---------|---------|----------|
 | `x11-xserver-utils` | Provides `xrandr` | Yes |
-| `zenity` | GTK dialog for shutdown/restart prompts | No — falls back to terminal `select` |
 | `dconf-tools` | Panel layout save/restore | Cinnamon only |
 
 Install on Debian/Ubuntu/Mint:
 
 ```bash
-sudo apt install x11-xserver-utils zenity dconf-tools
+sudo apt install x11-xserver-utils dconf-tools
 ```
 
 ---
@@ -48,8 +47,8 @@ bash install.sh
 ```
 
 This will:
+
 - Symlink all `bin/display-*.sh` scripts into `~/bin/` (edits to the repo take effect immediately)
-- Generate and install `display-shutdown.desktop` into `~/.local/share/applications/`
 - Generate and install `display-apply.desktop` into `~/.config/autostart/` (applies saved profile on every login)
 
 ### 3. Add `~/bin` to your PATH
@@ -151,7 +150,7 @@ display-switch.sh <profile>
 
 ### Switching profiles on the fly
 
-From a terminal:
+The easiest way is the system tray applet — click a profile name to switch immediately. Alternatively, from a terminal:
 
 ```bash
 display-switch.sh <profile>
@@ -159,15 +158,9 @@ display-switch.sh <profile>
 
 Or use the start menu shortcuts created during `display-new-profile.sh`.
 
-### Shutdown and restart
-
-`display-shutdown.sh` and `display-restart.sh` show a profile selection dialog before acting — Zenity radiolist if a display is available, terminal `select` menu otherwise. Every profile in `~/.config/display-profiles/` appears automatically.
-
-Use the **Shutdown** entry added to the application menu by `install.sh`, or call the scripts directly.
-
 ### Profile applied on login
 
-The autostart entry installed by `install.sh` calls `display-apply-saved.sh` on every login, which reads `~/.config/display-mode` and switches to the last selected profile. No manual intervention needed after selecting a profile at shutdown or restart.
+On every login, `display-apply-saved.sh` reads `~/.config/display-mode` and switches to whichever profile is recorded there. That file is updated whenever you switch profiles, or when you use **Profile for next login** in the tray applet to pre-select a different layout for the next login without changing your current display.
 
 ---
 
@@ -177,7 +170,7 @@ The autostart entry installed by `install.sh` calls `display-apply-saved.sh` on 
 display-new-profile.sh
 ```
 
-New profiles appear in the shutdown/restart dialog automatically.
+New profiles appear in the tray applet automatically.
 
 ## Editing a profile
 
@@ -198,6 +191,7 @@ xrandr \
 ```
 
 Common things to change:
+
 - `--rate` — adjust the refresh rate (must be a rate listed by `xrandr` for that mode)
 - `--pos XxY` — move an output; `0x0` is top-left, `2560x0` puts it immediately right of a 2560-wide display
 - `--mode WxH` — change the resolution
@@ -238,47 +232,6 @@ The DE is detected from `$XDG_CURRENT_DESKTOP`. Supported values: `cinnamon`, `g
 
 ---
 
-## Cinnamenu integration (optional)
-
-Replace Cinnamenu's built-in shutdown button and add a restart button. Open:
-
-```
-~/.local/share/cinnamon/applets/Cinnamenu@json/5.8/sidebar.js
-```
-
-Find the shutdown `SidebarButton` block and replace its callback:
-
-```javascript
-// Before:
-this.appThis.sessionManager.ShutdownRemote();
-
-// After (replace YOUR_USER with your username, e.g. /home/jordan/bin/...):
-Util.spawnCommandLine('/home/YOUR_USER/bin/display-shutdown.sh');
-```
-
-Add the restart button immediately after the shutdown block:
-
-```javascript
-this.items.push(new SidebarButton(
-    this.appThis,
-    newSidebarIcon('system-reboot'),
-    null,
-    _('Restart'),
-    _('Select display profile and restart'),
-    () => {
-        this.appThis.menu.close();
-        Util.spawnCommandLine('/home/YOUR_USER/bin/display-restart.sh');  // replace YOUR_USER
-    }));
-```
-
-Reload Cinnamon to apply:
-
-```bash
-cinnamon --replace &
-```
-
----
-
 ## Scripts reference
 
 | Script | What it does |
@@ -288,20 +241,55 @@ cinnamon --replace &
 | `display-switch.sh <name>` | Apply a profile (xrandr + panel layout + DE restart if needed) |
 | `display-save-layout.sh <name>` | Snapshot current DE panel config into a profile |
 | `display-apply-saved.sh` | Apply the last saved profile (used by autostart) |
-| `display-shutdown.sh` | Prompt for next profile, save choice, power off |
-| `display-restart.sh` | Prompt for next profile, save choice, reboot |
+
+---
+
+## System tray applet
+
+`gui/display-profiles-tray.py` is a GTK3 system tray applet that gives you a point-and-click interface for everything in the scripts.
+
+**Requirements:** `python3-gi`, plus either `gir1.2-ayatanaappindicator3-0.1` (recommended) or `gir1.2-appindicator3-0.1`:
+
+```bash
+sudo apt install python3-gi gir1.2-ayatanaappindicator3-0.1
+```
+
+**Run it:**
+
+```bash
+python3 gui/display-profiles-tray.py
+```
+
+**Menu reference:**
+
+| Entry | What it does |
+|-------|-------------|
+| Profile names (top section) | Switch to that profile immediately — same as `display-switch.sh <name>` |
+| **Launch tray on login** | Adds/removes an XDG autostart entry so the tray starts with your session |
+| **Auto-apply profile on login** | Adds/removes an XDG autostart entry that runs `display-apply-saved.sh` on every login. When enabled, whatever profile is recorded in `~/.config/display-mode` will be applied automatically after you log in |
+| **Profile for next login** | Submenu — select a profile to record in `~/.config/display-mode` *without* switching your current display. Greyed out when auto-apply is off. Use this to pre-select a different profile before you log out |
+| **New profile…** | Opens the profile creation wizard |
+
+**How auto-apply works end-to-end:**
+
+1. `~/.config/display-mode` holds a single line: the name of the profile to apply at login
+2. `display-switch.sh` updates this file every time you switch profiles
+3. "Profile for next login" in the tray updates it without switching anything — useful when you want to log out and come back in a different layout
+4. On login, `display-apply-saved.sh` reads the file and calls `display-switch.sh` with that name
 
 ---
 
 ## Troubleshooting
 
 **Outputs not switching** — check the output names in your profile match what `xrandr` reports:
+
 ```bash
 xrandr | grep " connected"
 display-setup.sh
 ```
 
 **Panel layout not restoring** — confirm a `panel-layout.sh` exists in the profile directory and that your DE is detected correctly:
+
 ```bash
 echo $XDG_CURRENT_DESKTOP
 ls ~/.config/display-profiles/<name>/
@@ -309,14 +297,14 @@ ls ~/.config/display-profiles/<name>/
 
 **Refresh rate reverting to 60Hz** — this is the Nvidia driver bug the scripts were built to address. The autostart entry re-applies the profile on every login. If it happens mid-session, run `display-switch.sh <profile>` again.
 
-**Zenity dialog not appearing at shutdown** — ensure `DISPLAY` is set. The scripts export `DISPLAY=:0` as a fallback, but if your display server is on a different display, update the export in `display-shutdown.sh` and `display-restart.sh`.
-
 **`display-switch.sh: command not found`** — `~/bin` is not in your PATH. Add it to `~/.bashrc` as described in the installation steps.
 
 **xrandr command failed** — if a profile applies partially or you see a generic error, check the debug log written by `display-switch.sh`:
+
 ```bash
 cat ~/.config/display-profiles/debug.log
 ```
+
 Common causes: output name mismatch (run `display-setup.sh` to verify), mode not supported by the driver, or monitor disconnected.
 
 ---
