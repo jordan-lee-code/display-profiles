@@ -1,0 +1,80 @@
+name: Release on merge
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version bump from PR label
+        id: bump
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR=$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" \
+               --jq '.[0].labels[].name' 2>/dev/null || true)
+
+          if echo "$PR" | grep -q "release:major"; then
+            echo "bump=major" >> "$GITHUB_OUTPUT"
+          elif echo "$PR" | grep -q "release:minor"; then
+            echo "bump=minor" >> "$GITHUB_OUTPUT"
+          elif echo "$PR" | grep -q "release:patch"; then
+            echo "bump=patch" >> "$GITHUB_OUTPUT"
+          else
+            echo "No release label on PR — skipping release."
+            echo "bump=skip" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compute tag and release notes
+        id: tag
+        if: steps.bump.outputs.bump != 'skip'
+        run: |
+          LATEST=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+          LATEST="${LATEST:-v0.0.0}"
+          version="${LATEST#v}"
+          major="${version%%.*}"; rest="${version#*.}"
+          minor="${rest%%.*}"; patch="${rest#*.}"
+
+          case "${{ steps.bump.outputs.bump }}" in
+            major) TAG="v$((major+1)).0.0" ;;
+            minor) TAG="v${major}.$((minor+1)).0" ;;
+            patch) TAG="v${major}.${minor}.$((patch+1))" ;;
+          esac
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+          if [[ "$LATEST" == "v0.0.0" ]]; then
+            NOTES=$(git log --pretty=format:"- %s" | head -30)
+          else
+            NOTES=$(git log "${LATEST}..HEAD" --pretty=format:"- %s")
+          fi
+          [[ -z "$NOTES" ]] && NOTES="No changes recorded."
+
+          {
+            echo "notes<<EOF"
+            echo "$NOTES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create tag and GitHub release
+        if: steps.bump.outputs.bump != 'skip'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "$TAG"
+          git push origin "$TAG"
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes "${{ steps.tag.outputs.notes }}"
+          echo "Released $TAG"
