@@ -152,7 +152,7 @@ display-switch.sh <profile>
 
 ### Switching profiles on the fly
 
-From a terminal:
+The easiest way is the system tray applet — click a profile name to switch immediately. Alternatively, from a terminal:
 
 ```bash
 display-switch.sh <profile>
@@ -168,7 +168,7 @@ Use the **Shutdown** entry added to the application menu by `install.sh`, or cal
 
 ### Profile applied on login
 
-The autostart entry installed by `install.sh` calls `display-apply-saved.sh` on every login, which reads `~/.config/display-mode` and switches to the last selected profile. No manual intervention needed after selecting a profile at shutdown or restart.
+On every login, `display-apply-saved.sh` reads `~/.config/display-mode` and switches to whichever profile is recorded there. That file is updated whenever you switch profiles, pick one at shutdown/restart, or use **Profile for next login** in the tray applet — which lets you pre-select a different layout for the next login without changing your current display.
 
 ---
 
