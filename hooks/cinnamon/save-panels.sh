@@ -124,6 +124,6 @@ fi
 
 # ── next-applet-id ────────────────────────────────────────────────────────────
 val=$(dconf read /org/cinnamon/next-applet-id 2>/dev/null)
-[[ -n "$val" ]] && printf 'dconf write /org/cinnamon/next-applet-id %s\n' "$val" >> "$SAVE_FILE"
+[[ -n "$val" ]] && printf 'dconf write /org/cinnamon/next-applet-id "%s"\n' "$val" >> "$SAVE_FILE"
 
 chmod +x "$SAVE_FILE"
