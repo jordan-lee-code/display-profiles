@@ -469,6 +469,44 @@ else
 fi
 rm -rf "$TMP_H"
 
+# output_signature is tested against stubbed xrandr output so the assertions do
+# not depend on whatever panels this machine has plugged in.
+_sig() {
+    xrandr() {
+        cat <<'XR'
+Screen 0: minimum 8 x 8, current 5120 x 1440, maximum 32767 x 32767
+DP-0 connected primary 2560x1440+0+0 (normal left inverted right x axis y axis) 597mm x 336mm
+   2560x1440     59.95 +  165.08*  120.00
+   1920x1080     60.00
+DP-1 disconnected (normal left inverted right x axis y axis)
+DP-2 connected 2560x1440+2560+0 (normal left inverted right x axis y axis) 597mm x 336mm
+   2560x1440     59.95*+  165.08   120.00
+XR
+    }
+    output_signature
+    unset -f xrandr
+}
+
+got=$(_sig)
+[[ "$got" == *"DP-0 2560x1440+0+0 165.08"* ]] \
+    && _pass "output_signature: records the active refresh rate per output" \
+    || _fail "output_signature: DP-0 line wrong in: $got"
+
+[[ "$got" == *"DP-1 off -"* ]] \
+    && _pass "output_signature: inactive output recorded as off" \
+    || _fail "output_signature: DP-1 line wrong in: $got"
+
+# The whole point: two outputs, same geometry, different rate must not compare
+# equal. A count of active outputs cannot tell these apart.
+[[ "$(echo "$got" | grep -c '2560x1440+')" == "2" ]] \
+    && _pass "output_signature: both active outputs present" \
+    || _fail "output_signature: expected 2 active outputs in: $got"
+
+[[ "$(echo "$got" | awk '/^DP-0/{print $3}')" != "$(echo "$got" | awk '/^DP-2/{print $3}')" ]] \
+    && _pass "output_signature: distinguishes outputs differing only by refresh rate" \
+    || _fail "output_signature: failed to distinguish differing rates in: $got"
+
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════════════════════════════"

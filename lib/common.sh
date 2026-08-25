@@ -142,3 +142,29 @@ current_primary_output() {
         END { if (fallback != "") print fallback }
     ' | head -1
 }
+
+# Prints one line per output as "NAME GEOMETRY RATE", where an inactive output
+# reads "off -". This is the state a profile switch is trying to hold, and it
+# is deliberately more than a count of active outputs: the common way a
+# compositor restart goes wrong is bringing the right monitors back in the
+# right places at the wrong refresh rate, which leaves any count identical and
+# used to go unnoticed until someone looked at xrandr and found 60Hz on a
+# 165Hz panel.
+output_signature() {
+    xrandr 2>/dev/null | awk '
+        function flush() { if (out != "") print out, geo, rate }
+        /^[^ ]+ (dis)?connected/ {
+            flush()
+            out = $1; geo = "off"; rate = "-"
+            for (i = 2; i <= NF; i++)
+                if ($i ~ /^[0-9]+x[0-9]+\+/) geo = $i
+            next
+        }
+        /^[ \t]+[0-9]+x[0-9]+/ {
+            if ($0 ~ /\*/)
+                for (i = 2; i <= NF; i++)
+                    if ($i ~ /\*/) { r = $i; gsub(/[*+]/, "", r); rate = r }
+        }
+        END { flush() }
+    '
+}

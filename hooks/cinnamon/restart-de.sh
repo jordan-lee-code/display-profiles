@@ -7,11 +7,12 @@
 # script can exit cleanly. nohup prevents SIGHUP from killing the new
 # compositor process when the parent shell exits.
 #
-# Cinnamon reads cinnamon-monitors.xml on startup and auto-enables any
-# connected output that is not listed in a saved configuration. If a
-# profile-dir is provided and contains an xrandr.sh, a background watcher
-# polls for the layout change and immediately re-applies xrandr to cancel
-# the unwanted re-enable before the user notices.
+# Cinnamon reads cinnamon-monitors.xml on startup and then reconfigures the
+# outputs itself, which does not reliably reproduce what the profile asked
+# for. If a profile-dir is provided and contains an xrandr.sh, a background
+# watcher polls for that drift and re-applies xrandr to correct it.
+
+source "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/../../lib/common.sh"
 
 PROFILE_DIR="${1:-}"
 
@@ -21,18 +22,23 @@ disown
 if [[ -n "$PROFILE_DIR" && -f "$PROFILE_DIR/xrandr.sh" ]]; then
     XRANDR_SCRIPT="$PROFILE_DIR/xrandr.sh"
     (
-        # Capture the desired active-monitor count right after xrandr ran.
-        before=$(xrandr 2>/dev/null | grep -cE " connected [0-9]+x[0-9]+\+" || echo 0)
-        deadline=$((SECONDS + 15))
+        # Captured immediately after xrandr.sh succeeded, so this is the state
+        # the profile actually asked for, refresh rates included.
+        WANT="$(output_signature)"
+
+        # Cinnamon can settle and then reconfigure again a moment later, so the
+        # watcher keeps correcting for the whole window rather than stopping at
+        # the first fix. The cap is there so a profile that genuinely cannot be
+        # applied does not turn into a re-apply loop.
+        deadline=$((SECONDS + 20))
+        fixes=0
         while (( SECONDS < deadline )); do
             sleep 0.5
-            after=$(xrandr 2>/dev/null | grep -cE " connected [0-9]+x[0-9]+\+" || echo 0)
-            if [[ "$after" != "$before" ]]; then
-                # Cinnamon changed the layout — re-assert the profile config.
-                sleep 0.3
-                bash "$XRANDR_SCRIPT" >/dev/null 2>&1
-                break
-            fi
+            [[ "$(output_signature)" == "$WANT" ]] && continue
+            sleep 0.3
+            bash "$XRANDR_SCRIPT" >/dev/null 2>&1
+            (( ++fixes >= 3 )) && break
+            sleep 1
         done
     ) &
     disown
