@@ -72,3 +72,73 @@ log_error() {
     mkdir -p "$(dirname "$log_file")"
     printf '[%s] ERROR: %s\n' "$(date -Iseconds)" "$msg" >> "$log_file"
 }
+
+# --- Mode discovery -------------------------------------------------------
+# These read xrandr rather than any saved profile, so they describe what the
+# hardware can actually do right now. display-switch-client.sh uses them to
+# match the host to whatever a streaming client asked for.
+
+# Prints "WIDTHxHEIGHT RATE" for every mode of a connected output, one line
+# per rate, in the order xrandr lists them. Rates keep the two-decimal string
+# form xrandr prints because --rate is matched against that exact text.
+list_output_modes() {
+    local output="$1"
+    xrandr | awk -v out="$output" '
+        $0 ~ "^"out" connected" { found=1; next }
+        found && /^[A-Z]/ { exit }
+        found && /^[[:space:]]+[0-9]+x[0-9]+/ {
+            match($0, /[0-9]+x[0-9]+/)
+            res = substr($0, RSTART, RLENGTH)
+            for (i = 2; i <= NF; i++) {
+                r = $i; gsub(/[*+]/, "", r)
+                if (r ~ /^[0-9]+\.[0-9]+$/) print res, r
+            }
+        }
+    '
+}
+
+# Prints an output's preferred resolution as WIDTHxHEIGHT. xrandr marks the
+# panel's preferred mode with '+', which is the one to drive the panel at;
+# the first listed mode is used as a fallback if no mode carries the marker.
+# Prints nothing if the output is not connected.
+output_preferred_res() {
+    local output="$1"
+    xrandr | awk -v out="$output" '
+        $0 ~ "^"out" connected" { found=1; next }
+        found && /^[A-Z]/ { exit }
+        found && /^[[:space:]]+[0-9]+x[0-9]+/ {
+            match($0, /[0-9]+x[0-9]+/)
+            res = substr($0, RSTART, RLENGTH)
+            if (first == "") first = res
+            if ($0 ~ /\+/) { pref = res; exit }
+        }
+        END { if (pref != "") print pref; else if (first != "") print first }
+    '
+}
+
+# Prints the rate to drive a resolution at on an output: the lowest rate that
+# still meets the target fps, so the panel is not pushed harder than the
+# stream needs, falling back to the highest rate the mode offers when nothing
+# reaches the target. The half-hertz tolerance is what lets a 60fps request
+# settle on a 59.81Hz or 59.95Hz mode instead of jumping to 120.
+best_rate_for() {
+    local output="$1" res="$2" target="$3"
+    list_output_modes "$output" | awk -v res="$res" -v target="$target" '
+        $1 == res {
+            rs = $2; r = rs + 0
+            if (maxs == "" || r > maxn) { maxs = rs; maxn = r }
+            if (r + 0.5 >= target && (bests == "" || r < bestn)) { bests = rs; bestn = r }
+        }
+        END { if (bests != "") print bests; else if (maxs != "") print maxs }
+    '
+}
+
+# Prints the name of the currently primary connected output, falling back to
+# the first connected output when no primary is set.
+current_primary_output() {
+    xrandr | awk '
+        / connected primary / { print $1; exit }
+        / connected / { if (fallback == "") fallback = $1 }
+        END { if (fallback != "") print fallback }
+    ' | head -1
+}
