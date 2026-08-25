@@ -13,6 +13,7 @@ Built to work around the Nvidia driver bug that drops refresh rate and forgets d
 - Applies the saved profile automatically on login via autostart
 - Interactive wizard to create new profiles with output discovery
 - GTK3 system tray applet for point-and-click switching and profile management
+- Matches the display to a game streaming client's requested resolution and frame rate
 
 ---
 
@@ -185,8 +186,8 @@ The generated file looks like this:
 ```bash
 #!/bin/bash
 xrandr \
-    --output DP-0 --mode 2560x1440 --rate 165.08 --pos 0x0 --primary \
-    --output DP-2 --mode 1920x1080 --rate 60.00 --pos 2560x180 \
+    --output DP-0 --mode 2560x1440 --rate 165.08 --scale 1x1 --pos 0x0 --primary \
+    --output DP-2 --mode 1920x1080 --rate 60.00 --scale 1x1 --pos 2560x180 \
     --output HDMI-0 --off
 ```
 
@@ -195,6 +196,10 @@ Common things to change:
 - `--rate` — adjust the refresh rate (must be a rate listed by `xrandr` for that mode)
 - `--pos XxY` — move an output; `0x0` is top-left, `2560x0` puts it immediately right of a 2560-wide display
 - `--mode WxH` — change the resolution
+
+Leave `--scale 1x1` where it is. RandR transforms are sticky, so an output that
+was scaled earlier stays scaled through a later `--mode` change, and this is
+what clears it.
 
 To regenerate from scratch, run `display-new-profile.sh` again with the same name and confirm the overwrite.
 
@@ -241,6 +246,7 @@ The DE is detected from `$XDG_CURRENT_DESKTOP`. Supported values: `cinnamon`, `g
 | `display-switch.sh <name>` | Apply a profile (xrandr + panel layout + DE restart if needed) |
 | `display-save-layout.sh <name>` | Snapshot current DE panel config into a profile |
 | `display-apply-saved.sh` | Apply the last saved profile (used by autostart) |
+| `display-switch-client.sh` | Match the display to a streaming client's requested resolution and frame rate |
 
 ---
 
@@ -309,13 +315,83 @@ Common causes: output name mismatch (run `display-setup.sh` to verify), mode not
 
 ---
 
+## Game streaming (Sunshine and Moonlight)
+
+If you stream this machine to a Steam Deck, a TV, a laptop or a phone, each of
+those wants a different resolution, and keeping a hardcoded profile per device
+gets tedious quickly. `display-switch-client.sh` reads what the client actually
+asked for and matches the display to it, so one Sunshine app entry serves every
+device you own.
+
+### How the mode gets chosen
+
+The requested size is used directly when your panel has a matching mode that
+reaches the requested frame rate. When it does not, the panel stays on its own
+preferred mode and X is given a framebuffer of the requested size scaled onto
+it.
+
+That second path matters more than it first appears. A Steam Deck asking for
+1280x800 at 90fps would otherwise pin a 1440p panel to its only 1280x800 mode,
+which is typically 59.81Hz, quietly capping the stream at 60fps. Scaling keeps
+the panel at its full refresh so the 90fps stream is real. The same path is
+what lets a 4K client work at all on a panel that has no 4K mode.
+
+### Wiring it into Sunshine
+
+Point Sunshine's `prep-cmd` at the bridge script. In `apps.json`:
+
+```json
+"prep-cmd": [
+    {
+        "do":   "sh /home/you/bin/sunshine-display-prep.sh do",
+        "undo": "sh /home/you/bin/sunshine-display-prep.sh undo"
+    }
+]
+```
+
+Set `SUNSHINE_UNDO_PROFILE` in Sunshine's environment to name the profile to
+return to when the stream ends; it defaults to `personal`. For the flatpak
+build of Sunshine:
+
+```bash
+flatpak override --user --env=SUNSHINE_UNDO_PROFILE=personal dev.lizardbyte.app.Sunshine
+```
+
+The bridge exists because `flatpak-spawn --host` does not carry the sandbox
+environment across to the host, so the client's dimensions have to be passed
+over explicitly. If you run Sunshine natively rather than as a flatpak, skip
+the bridge and call `display-switch-client.sh` from `prep-cmd` directly.
+
+### Choosing which output to stream from
+
+Write the output name to `~/.config/display-profiles/stream-output`:
+
+```bash
+echo "DP-2" > ~/.config/display-profiles/stream-output
+```
+
+Everything else is switched off for the duration, so the captured framebuffer
+is exactly the client's screen and nothing more. Without this file the current
+primary output is used.
+
+### Trying it without a client
+
+```bash
+display-switch-client.sh --width 1280 --height 800 --fps 90 --dry-run
+```
+
+`--dry-run` prints the xrandr command it would run and changes nothing, which
+is the quickest way to see how a given device will be handled.
+
+---
+
 ## Running the tests
 
 ```bash
 bash tests/validate.sh
 ```
 
-Covers bash syntax across all scripts, unit tests for every `lib/common.sh` function, error-path behaviour for each script, and a live round-trip display switch (re-applies the current config via xrandr). Sections that require a running X session are skipped automatically when `DISPLAY` is not set.
+Covers bash syntax across all scripts, unit tests for every `lib/common.sh` function, error-path behaviour for each script, a live round-trip display switch (re-applies the current config via xrandr), and the client-driven resolution path. Sections that require a running X session are skipped automatically when `DISPLAY` is not set.
 
 ---
 

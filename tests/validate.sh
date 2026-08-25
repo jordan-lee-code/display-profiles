@@ -1,14 +1,16 @@
 #!/bin/bash
 # Validation suite for display-profiles.
 #
-# Covers: bash syntax, common.sh unit tests, error-path behaviour, and a live
-# round-trip display switch that re-applies the current config via xrandr.
+# Covers: bash syntax, common.sh unit tests, error-path behaviour, a live
+# round-trip display switch that re-applies the current config via xrandr, and
+# the client-driven resolution path used by streaming hosts.
 #
 # Usage:
 #   bash tests/validate.sh          # from the repo root
 #   ./tests/validate.sh             # after chmod +x
 #
-# Sections 3 and 5 require xrandr and a running X session (DISPLAY set).
+# Sections 3, 5 and part of 6 require xrandr and a running X session
+# (DISPLAY set).
 # They are skipped automatically when those conditions are not met.
 
 REPO="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/.." && pwd)"
@@ -46,6 +48,14 @@ do
         _fail "$name: $err"
     fi
 done
+
+# The Sunshine bridge runs inside a flatpak sandbox where bash is not
+# guaranteed, so it is POSIX sh and is checked with sh -n rather than bash -n.
+if err=$(sh -n "$REPO/integrations/sunshine/prep.sh" 2>&1); then
+    _pass "integrations/sunshine/prep.sh"
+else
+    _fail "integrations/sunshine/prep.sh: $err"
+fi
 
 # ── 2. lib/common.sh unit tests ───────────────────────────────────────────────
 section "2. lib/common.sh unit tests"
@@ -299,6 +309,203 @@ else
         _pass "round-trip: temp profile cleaned up, display-mode restored"
     fi
 fi
+
+# ── 6. Client-driven resolution ───────────────────────────────────────────────
+section "6. Client-driven resolution"
+
+# best_rate_for is tested against a stubbed mode list so the assertions do not
+# depend on whatever panels this machine happens to have plugged in.
+_stub_modes() {
+    list_output_modes() {
+        cat <<'MODES'
+2560x1440 59.95
+2560x1440 165.08
+2560x1440 143.91
+2560x1440 120.00
+1280x800 59.81
+MODES
+    }
+}
+_stub_modes
+
+got=$(best_rate_for STUB 2560x1440 90)
+[[ "$got" == "120.00" ]] \
+    && _pass "best_rate_for: picks lowest rate meeting the target" \
+    || _fail "best_rate_for: 90fps target → expected 120.00, got '$got'"
+
+got=$(best_rate_for STUB 2560x1440 240)
+[[ "$got" == "165.08" ]] \
+    && _pass "best_rate_for: unreachable target → highest available rate" \
+    || _fail "best_rate_for: 240fps target → expected 165.08, got '$got'"
+
+got=$(best_rate_for STUB 1280x800 60)
+[[ "$got" == "59.81" ]] \
+    && _pass "best_rate_for: 60fps target tolerates a 59.81Hz mode" \
+    || _fail "best_rate_for: 60fps target → expected 59.81, got '$got'"
+
+got=$(best_rate_for STUB 3840x2160 60)
+[[ -z "$got" ]] \
+    && _pass "best_rate_for: unknown resolution → empty" \
+    || _fail "best_rate_for: unknown resolution → expected empty, got '$got'"
+
+unset -f list_output_modes
+source "$REPO/lib/common.sh"
+
+# A client that reports nothing usable must not take the display down with it.
+TMP_H=$(mktemp -d)
+if out=$(HOME=$TMP_H bash "$REPO/bin/display-switch-client.sh" --width abc --height 800 2>&1); then
+    [[ "$out" == *"leaving the current display configuration alone"* ]] \
+        && _pass "client: invalid dimensions → leaves display alone, exits 0" \
+        || _fail "client: invalid dimensions → wrong message: $out"
+else
+    _fail "client: invalid dimensions should exit 0, not fail"
+fi
+rm -rf "$TMP_H"
+
+TMP_H=$(mktemp -d)
+if out=$(HOME=$TMP_H bash "$REPO/bin/display-switch-client.sh" --width 99999 --height 800 2>&1); then
+    [[ "$out" == *"No usable client resolution"* ]] \
+        && _pass "client: out-of-range width rejected before reaching xrandr" \
+        || _fail "client: out-of-range width → wrong message: $out"
+else
+    _fail "client: out-of-range width should exit 0, not fail"
+fi
+rm -rf "$TMP_H"
+
+# With a fallback configured the same bad input should hand over to the named
+# profile instead, and report that it did.
+TMP_H=$(mktemp -d)
+out=$(HOME=$TMP_H bash "$REPO/bin/display-switch-client.sh" \
+        --width abc --fallback __nonexistent_profile__ 2>&1 || true)
+[[ "$out" == *"falling back to profile"* ]] \
+    && _pass "client: invalid dimensions with --fallback → delegates to profile" \
+    || _fail "client: --fallback not honoured: $out"
+rm -rf "$TMP_H"
+
+if ! $HAVE_XRANDR; then
+    _skip "client: mode selection needs xrandr and DISPLAY"
+else
+    OUT_NAME=$(current_primary_output)
+    if [[ -z "$OUT_NAME" ]]; then
+        _skip "client: no connected output to test mode selection against"
+    else
+        PANEL=$(output_preferred_res "$OUT_NAME")
+        PANEL_RATE=$(best_rate_for "$OUT_NAME" "$PANEL" 1)
+
+        # Asking for the panel's own resolution must not engage the scaler.
+        IFS=x read -r pw ph <<< "$PANEL"
+        out=$(bash "$REPO/bin/display-switch-client.sh" --output "$OUT_NAME" \
+                --width "$pw" --height "$ph" --fps 60 --dry-run 2>&1)
+        [[ "$out" == *"--scale 1x1"* && "$out" != *"--scale-from"* ]] \
+            && _pass "client: native resolution request uses no scaling" \
+            || _fail "client: native request unexpectedly scaled: $out"
+
+        # A size the panel has no mode for must be scaled rather than refused,
+        # which is what lets a 4K client work on a 1440p panel.
+        odd_w=$(( pw > 1000 ? pw - 337 : 800 ))
+        odd_h=$(( ph > 700 ? ph - 211 : 600 ))
+        out=$(bash "$REPO/bin/display-switch-client.sh" --output "$OUT_NAME" \
+                --width "$odd_w" --height "$odd_h" --fps 60 --dry-run 2>&1)
+        [[ "$out" == *"--scale-from ${odd_w}x${odd_h}"* ]] \
+            && _pass "client: non-native resolution falls back to scaling" \
+            || _fail "client: non-native request not scaled: $out"
+
+        # The panel must stay on one of its own modes even while scaling.
+        [[ "$out" == *"--mode $PANEL"* ]] \
+            && _pass "client: scaled request keeps the panel on a native mode" \
+            || _fail "client: scaled request left the panel mode wrong: $out"
+
+        # An output that is not connected is a fallback case, not a crash.
+        out=$(bash "$REPO/bin/display-switch-client.sh" --output __no_such_output__ \
+                --width 1280 --height 800 --fps 60 --dry-run 2>&1 || true)
+        [[ "$out" == *"not connected"* ]] \
+            && _pass "client: unknown output → clear 'not connected' message" \
+            || _fail "client: unknown output → wrong message: $out"
+
+        unset PANEL_RATE
+    fi
+fi
+
+# --no-persist must apply the layout without changing what login restores.
+TMP_H=$(mktemp -d)
+mkdir -p "$TMP_H/.config/display-profiles/_validate_np"
+printf '#!/bin/bash\nexit 0\n' > "$TMP_H/.config/display-profiles/_validate_np/xrandr.sh"
+chmod +x "$TMP_H/.config/display-profiles/_validate_np/xrandr.sh"
+printf 'personal\n' > "$TMP_H/.config/display-mode"
+if HOME=$TMP_H bash "$REPO/bin/display-switch.sh" --no-persist _validate_np >/dev/null 2>&1; then
+    [[ "$(cat "$TMP_H/.config/display-mode")" == "personal" ]] \
+        && _pass "display-switch.sh --no-persist leaves display-mode untouched" \
+        || _fail "display-switch.sh --no-persist overwrote display-mode"
+else
+    _fail "display-switch.sh --no-persist should succeed"
+fi
+rm -rf "$TMP_H"
+
+# A transient xrandr failure should be retried rather than reported immediately,
+# so a switch that loses a startup race still lands.
+TMP_H=$(mktemp -d)
+mkdir -p "$TMP_H/.config/display-profiles/_validate_retry"
+cat > "$TMP_H/.config/display-profiles/_validate_retry/xrandr.sh" <<RETRY
+#!/bin/bash
+COUNT_FILE="$TMP_H/attempts"
+n=\$(( \$(cat "\$COUNT_FILE" 2>/dev/null || echo 0) + 1 ))
+echo "\$n" > "\$COUNT_FILE"
+[[ "\$n" -ge 2 ]] && exit 0
+echo "transient failure" >&2
+exit 1
+RETRY
+chmod +x "$TMP_H/.config/display-profiles/_validate_retry/xrandr.sh"
+if HOME=$TMP_H bash "$REPO/bin/display-switch.sh" _validate_retry >/dev/null 2>&1; then
+    attempts=$(cat "$TMP_H/attempts" 2>/dev/null)
+    if [[ "$attempts" == "2" ]] \
+        && grep -q "transient failure" "$TMP_H/.config/display-profiles/debug.log" 2>/dev/null
+    then
+        _pass "display-switch.sh: retries a transient xrandr failure and logs its stderr"
+    else
+        _fail "display-switch.sh: retry behaviour wrong (attempts: '$attempts')"
+    fi
+else
+    _fail "display-switch.sh: should succeed once xrandr.sh stops failing"
+fi
+rm -rf "$TMP_H"
+
+# output_signature is tested against stubbed xrandr output so the assertions do
+# not depend on whatever panels this machine has plugged in.
+_sig() {
+    xrandr() {
+        cat <<'XR'
+Screen 0: minimum 8 x 8, current 5120 x 1440, maximum 32767 x 32767
+DP-0 connected primary 2560x1440+0+0 (normal left inverted right x axis y axis) 597mm x 336mm
+   2560x1440     59.95 +  165.08*  120.00
+   1920x1080     60.00
+DP-1 disconnected (normal left inverted right x axis y axis)
+DP-2 connected 2560x1440+2560+0 (normal left inverted right x axis y axis) 597mm x 336mm
+   2560x1440     59.95*+  165.08   120.00
+XR
+    }
+    output_signature
+    unset -f xrandr
+}
+
+got=$(_sig)
+[[ "$got" == *"DP-0 2560x1440+0+0 165.08"* ]] \
+    && _pass "output_signature: records the active refresh rate per output" \
+    || _fail "output_signature: DP-0 line wrong in: $got"
+
+[[ "$got" == *"DP-1 off -"* ]] \
+    && _pass "output_signature: inactive output recorded as off" \
+    || _fail "output_signature: DP-1 line wrong in: $got"
+
+# The whole point: two outputs, same geometry, different rate must not compare
+# equal. A count of active outputs cannot tell these apart.
+[[ "$(echo "$got" | grep -c '2560x1440+')" == "2" ]] \
+    && _pass "output_signature: both active outputs present" \
+    || _fail "output_signature: expected 2 active outputs in: $got"
+
+[[ "$(echo "$got" | awk '/^DP-0/{print $3}')" != "$(echo "$got" | awk '/^DP-2/{print $3}')" ]] \
+    && _pass "output_signature: distinguishes outputs differing only by refresh rate" \
+    || _fail "output_signature: failed to distinguish differing rates in: $got"
+
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""

@@ -316,12 +316,17 @@ write_profile() {
     # Uses --pos for absolute placement. --pos and --left-of/--right-of are
     # mutually exclusive in xrandr; --pos is the only way to express layouts
     # where outputs are not simply tiled edge-to-edge.
+    #
+    # --scale 1x1 is written explicitly so that switching away from a scaled
+    # streaming layout clears the transform, which a plain --mode leaves in
+    # place. Without it, returning from a client-driven stream resolution
+    # leaves the output stuck at the streaming size.
     {
         echo "#!/bin/bash"
         printf "xrandr"
         for OUTPUT in "${ALL_OUTPUTS[@]}"; do
             if [[ -v ENABLED[$OUTPUT] ]]; then
-                printf " \\\\\n    --output %s --mode %sx%s --rate %s --pos %sx%s" \
+                printf " \\\\\n    --output %s --mode %sx%s --rate %s --scale 1x1 --pos %sx%s" \
                     "$OUTPUT" "${MODE_W[$OUTPUT]}" "${MODE_H[$OUTPUT]}" \
                     "${RATE[$OUTPUT]}" "${POS_X[$OUTPUT]}" "${POS_Y[$OUTPUT]}"
                 [[ "$OUTPUT" == "$PRIMARY" ]] && printf " --primary"

@@ -20,6 +20,14 @@ for f in "$REPO_DIR"/bin/display-*.sh; do
 done
 echo "  Scripts symlinked to ~/bin/"
 
+# The Sunshine bridge is symlinked under a name of its own because Sunshine's
+# apps.json has to reference it by absolute path, and that path should not
+# change if the repo is ever moved.
+if [[ -f "$REPO_DIR/integrations/sunshine/prep.sh" ]]; then
+    ln -sf "$REPO_DIR/integrations/sunshine/prep.sh" "$HOME/bin/sunshine-display-prep.sh"
+    echo "  Sunshine prep bridge symlinked to ~/bin/sunshine-display-prep.sh"
+fi
+
 # Wire git hooks so the pre-push version bump hook is active for contributors.
 if git -C "$REPO_DIR" config core.hooksPath .githooks 2>/dev/null; then
     echo "  Git hooks configured (.githooks/)"
